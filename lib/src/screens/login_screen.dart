@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../api_client.dart';
-import 'map_screen.dart';
+import '../theme.dart';
+import 'home_shell.dart';
 
 /// Tela de login / cadastro.
 class LoginScreen extends StatefulWidget {
@@ -50,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => MapScreen(api: widget.api),
+          builder: (_) => HomeShell(api: widget.api),
         ),
       );
     } on ApiException catch (e) {
@@ -76,7 +79,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.hexagon_outlined, size: 64),
+                  const Icon(LucideIcons.hexagon,
+                      size: 56, color: AppColors.orange),
                   const SizedBox(height: 12),
                   Text(
                     'ZonIQmax',

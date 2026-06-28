@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'src/api_client.dart';
 import 'src/theme.dart';
 import 'src/screens/login_screen.dart';
-import 'src/screens/map_screen.dart';
+import 'src/screens/home_shell.dart';
 
 void main() {
   runApp(const ZonIQmaxApp());
@@ -35,7 +35,7 @@ class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
             );
           }
           final hasToken = snapshot.data != null;
-          return hasToken ? MapScreen(api: _api) : LoginScreen(api: _api);
+          return hasToken ? HomeShell(api: _api) : LoginScreen(api: _api);
         },
       ),
     );

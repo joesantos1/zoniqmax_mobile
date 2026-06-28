@@ -58,7 +58,14 @@ class MapTerritory {
   final double centerLat;
   final double centerLng;
   final double radiusKm;
+  final bool isCurrent;
+  final String? customName;
+  final String? color;
+  final String? iconName;
+  final String? backgroundUrl;
   final String? governorUserId;
+  final String? governorName;
+  final String? governorAvatarUrl;
 
   MapTerritory({
     required this.id,
@@ -66,8 +73,26 @@ class MapTerritory {
     required this.centerLat,
     required this.centerLng,
     required this.radiusKm,
+    required this.isCurrent,
+    required this.customName,
+    required this.color,
+    required this.iconName,
+    required this.backgroundUrl,
     required this.governorUserId,
+    required this.governorName,
+    required this.governorAvatarUrl,
   });
+
+  bool get isGoverned => governorUserId != null;
+  String get displayName => (customName != null && customName!.isNotEmpty)
+      ? customName!
+      : name;
+
+  /// Inicial do nome do governador (fallback quando não há foto).
+  String get governorInitial =>
+      (governorName != null && governorName!.isNotEmpty)
+          ? governorName![0].toUpperCase()
+          : '?';
 
   factory MapTerritory.fromJson(Map<String, dynamic> json) {
     return MapTerritory(
@@ -76,7 +101,14 @@ class MapTerritory {
       centerLat: (json['centerLat'] as num).toDouble(),
       centerLng: (json['centerLng'] as num).toDouble(),
       radiusKm: (json['radiusKm'] as num?)?.toDouble() ?? 3,
+      isCurrent: json['isCurrent'] as bool? ?? false,
+      customName: json['customName'] as String?,
+      color: json['color'] as String?,
+      iconName: json['iconName'] as String?,
+      backgroundUrl: json['backgroundUrl'] as String?,
       governorUserId: json['governorUserId'] as String?,
+      governorName: json['governorName'] as String?,
+      governorAvatarUrl: json['governorAvatarUrl'] as String?,
     );
   }
 
@@ -139,6 +171,10 @@ class ClassRankingEntry {
 class TerritoryDetail {
   final String id;
   final String name;
+  final String? customName;
+  final String? color;
+  final String? iconName;
+  final String? backgroundUrl;
   final String? governorUserId;
   final List<RankingEntry> generalRanking;
   final Map<String, List<ClassRankingEntry>> rankingByClass;
@@ -146,10 +182,18 @@ class TerritoryDetail {
   TerritoryDetail({
     required this.id,
     required this.name,
+    required this.customName,
+    required this.color,
+    required this.iconName,
+    required this.backgroundUrl,
     required this.governorUserId,
     required this.generalRanking,
     required this.rankingByClass,
   });
+
+  String get displayName => (customName != null && customName!.isNotEmpty)
+      ? customName!
+      : name;
 
   factory TerritoryDetail.fromJson(Map<String, dynamic> json) {
     final general = (json['generalRanking'] as List<dynamic>? ?? [])
@@ -168,6 +212,10 @@ class TerritoryDetail {
     return TerritoryDetail(
       id: json['id'] as String,
       name: json['name'] as String,
+      customName: json['customName'] as String?,
+      color: json['color'] as String?,
+      iconName: json['iconName'] as String?,
+      backgroundUrl: json['backgroundUrl'] as String?,
       governorUserId: json['governorUserId'] as String?,
       generalRanking: general,
       rankingByClass: byClass,
@@ -212,6 +260,7 @@ class Challenge {
 
   /// Enunciado a exibir (pergunta, expressão ou sequência).
   String get prompt {
+    if (data['prompt'] is String) return data['prompt'] as String;
     if (data['pergunta'] is String) return data['pergunta'] as String;
     if (data['expressao'] is String) return 'Quanto é ${data['expressao']}?';
     if (data['sequencia'] is List) {
@@ -324,28 +373,166 @@ class KnowledgeXp {
   }
 }
 
+class TerritoryParticipation {
+  final String id;
+  final String name;
+  final String? customName;
+  final double effectiveInfluence;
+  final bool isGovernor;
+
+  TerritoryParticipation({
+    required this.id,
+    required this.name,
+    required this.customName,
+    required this.effectiveInfluence,
+    required this.isGovernor,
+  });
+
+  String get displayName => (customName != null && customName!.isNotEmpty)
+      ? customName!
+      : name;
+
+  factory TerritoryParticipation.fromJson(Map<String, dynamic> json) {
+    return TerritoryParticipation(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      customName: json['customName'] as String?,
+      effectiveInfluence: (json['effectiveInfluence'] as num?)?.toDouble() ?? 0,
+      isGovernor: json['isGovernor'] as bool? ?? false,
+    );
+  }
+}
+
+class ClassTotal {
+  final String classType;
+  final double score;
+  ClassTotal({required this.classType, required this.score});
+
+  factory ClassTotal.fromJson(Map<String, dynamic> json) => ClassTotal(
+        classType: json['classType'] as String,
+        score: (json['score'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class AttemptSummary {
+  final String type;
+  final String area;
+  final bool success;
+  final double scoreAwarded;
+  final DateTime createdAt;
+
+  AttemptSummary({
+    required this.type,
+    required this.area,
+    required this.success,
+    required this.scoreAwarded,
+    required this.createdAt,
+  });
+
+  factory AttemptSummary.fromJson(Map<String, dynamic> json) => AttemptSummary(
+        type: json['type'] as String,
+        area: json['area'] as String,
+        success: json['success'] as bool? ?? false,
+        scoreAwarded: (json['scoreAwarded'] as num?)?.toDouble() ?? 0,
+        createdAt:
+            DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}
+
+/// Perfil público de outro jogador (visto ao tocar no nome no ranking).
+class PublicProfile {
+  final String id;
+  final String name;
+  final String? avatarUrl;
+  final List<KnowledgeXp> knowledgeXp;
+  final int totalAttempts;
+  final int successfulAttempts;
+  final List<TerritoryParticipation> territories;
+  final List<ClassTotal> classTotals;
+  final List<AttemptSummary> recentAttempts;
+
+  PublicProfile({
+    required this.id,
+    required this.name,
+    required this.avatarUrl,
+    required this.knowledgeXp,
+    required this.totalAttempts,
+    required this.successfulAttempts,
+    required this.territories,
+    required this.classTotals,
+    required this.recentAttempts,
+  });
+
+  double get accuracy =>
+      totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
+  double get totalXp => knowledgeXp.fold(0, (s, x) => s + x.xp);
+
+  factory PublicProfile.fromJson(Map<String, dynamic> json) {
+    List<T> list<T>(String key, T Function(Map<String, dynamic>) f) =>
+        (json[key] as List<dynamic>? ?? [])
+            .map((e) => f(e as Map<String, dynamic>))
+            .toList();
+    return PublicProfile(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      avatarUrl: json['avatarUrl'] as String?,
+      knowledgeXp: list('knowledgeXp', KnowledgeXp.fromJson),
+      totalAttempts: (json['totalAttempts'] as num?)?.toInt() ?? 0,
+      successfulAttempts: (json['successfulAttempts'] as num?)?.toInt() ?? 0,
+      territories: list('territories', TerritoryParticipation.fromJson),
+      classTotals: list('classTotals', ClassTotal.fromJson),
+      recentAttempts: list('recentAttempts', AttemptSummary.fromJson),
+    );
+  }
+}
+
 class Me {
   final String id;
   final String name;
   final String email;
+  final String? avatarUrl;
   final List<KnowledgeXp> knowledgeXp;
+  final int totalAttempts;
+  final int successfulAttempts;
+  final List<TerritoryParticipation> territories;
 
   Me({
     required this.id,
     required this.name,
     required this.email,
+    required this.avatarUrl,
     required this.knowledgeXp,
+    required this.totalAttempts,
+    required this.successfulAttempts,
+    required this.territories,
   });
+
+  /// Taxa de acerto em % (0 quando ainda não há tentativas).
+  double get accuracy =>
+      totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
+
+  /// XP total (soma de todas as áreas).
+  double get totalXp => knowledgeXp.fold(0, (s, x) => s + x.xp);
+
+  int get governedCount => territories.where((t) => t.isGovernor).length;
 
   factory Me.fromJson(Map<String, dynamic> json) {
     final xp = (json['knowledgeXp'] as List<dynamic>? ?? [])
         .map((e) => KnowledgeXp.fromJson(e as Map<String, dynamic>))
         .toList();
+    final terrs = (json['territories'] as List<dynamic>? ?? [])
+        .map((e) => TerritoryParticipation.fromJson(e as Map<String, dynamic>))
+        .toList();
     return Me(
       id: json['id'] as String,
       name: json['name'] as String,
       email: json['email'] as String,
+      avatarUrl: json['avatarUrl'] as String?,
       knowledgeXp: xp,
+      totalAttempts: (json['totalAttempts'] as num?)?.toInt() ?? 0,
+      successfulAttempts: (json['successfulAttempts'] as num?)?.toInt() ?? 0,
+      territories: terrs,
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -23,22 +24,32 @@ class ApiClient {
   final http.Client _client;
   final FlutterSecureStorage _storage;
   static const _tokenKey = 'jwt_token';
+  static const _userIdKey = 'user_id';
 
   String? _token;
+  String? _userId;
+
+  /// Id do jogador autenticado (disponível após login/registro ou loadToken).
+  String? get currentUserId => _userId;
 
   Future<String?> loadToken() async {
     _token ??= await _storage.read(key: _tokenKey);
+    _userId ??= await _storage.read(key: _userIdKey);
     return _token;
   }
 
-  Future<void> _saveToken(String token) async {
+  Future<void> _saveSession(String token, String userId) async {
     _token = token;
+    _userId = userId;
     await _storage.write(key: _tokenKey, value: token);
+    await _storage.write(key: _userIdKey, value: userId);
   }
 
   Future<void> logout() async {
     _token = null;
+    _userId = null;
     await _storage.delete(key: _tokenKey);
+    await _storage.delete(key: _userIdKey);
   }
 
   Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
@@ -67,7 +78,7 @@ class ApiClient {
       body: jsonEncode({'name': name, 'email': email, 'password': password}),
     );
     final result = AuthResult.fromJson(_decode(res) as Map<String, dynamic>);
-    await _saveToken(result.token);
+    await _saveSession(result.token, result.userId);
     return result;
   }
 
@@ -78,7 +89,7 @@ class ApiClient {
       body: jsonEncode({'email': email, 'password': password}),
     );
     final result = AuthResult.fromJson(_decode(res) as Map<String, dynamic>);
-    await _saveToken(result.token);
+    await _saveSession(result.token, result.userId);
     return result;
   }
 
@@ -125,8 +136,14 @@ class ApiClient {
 
   // ---- Desafios ----
 
-  Future<Challenge> nextChallenge({String? area}) async {
-    final query = area != null ? '?area=$area' : '';
+  Future<Challenge> nextChallenge({String? area, int? difficulty}) async {
+    final params = <String, String>{
+      if (area != null) 'area': area,
+      if (difficulty != null) 'difficulty': '$difficulty',
+    };
+    final query = params.isEmpty
+        ? ''
+        : '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
     final res = await _client.get(
       _uri('/challenges/next$query'),
       headers: _headers(auth: true),
@@ -194,5 +211,94 @@ class ApiClient {
   Future<Me> me() async {
     final res = await _client.get(_uri('/me'), headers: _headers(auth: true));
     return Me.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  /// Perfil público de outro jogador.
+  Future<PublicProfile> getPlayer(String userId) async {
+    final res = await _client.get(
+      _uri('/users/$userId'),
+      headers: _headers(auth: true),
+    );
+    return PublicProfile.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  Future<void> updateName(String name) async {
+    final res = await _client.patch(
+      _uri('/me/profile'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    _decode(res);
+  }
+
+  Future<void> changePassword(String current, String newPassword) async {
+    final res = await _client.patch(
+      _uri('/me/password'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'currentPassword': current,
+        'newPassword': newPassword,
+      }),
+    );
+    _decode(res);
+  }
+
+  /// Envia uma imagem ao Cloudinary (assinatura no servidor) e retorna a URL.
+  Future<String> uploadImage(Uint8List bytes, String filename) async {
+    final signRes = await _client.post(
+      _uri('/me/avatar/sign'),
+      headers: _headers(auth: true),
+    );
+    final sign = _decode(signRes) as Map<String, dynamic>;
+    final cloudName = sign['cloudName'] as String;
+
+    final uri =
+        Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+    final req = http.MultipartRequest('POST', uri)
+      ..fields['api_key'] = sign['apiKey'].toString()
+      ..fields['timestamp'] = sign['timestamp'].toString()
+      ..fields['folder'] = sign['folder'].toString()
+      ..fields['signature'] = sign['signature'].toString()
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+
+    final streamed = await req.send();
+    final body = await streamed.stream.bytesToString();
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      throw ApiException(streamed.statusCode, 'Falha no upload da imagem');
+    }
+    return (jsonDecode(body) as Map<String, dynamic>)['secure_url'] as String;
+  }
+
+  /// Upload do avatar do jogador + salva a URL no perfil.
+  Future<String> uploadAvatar(Uint8List bytes, String filename) async {
+    final url = await uploadImage(bytes, filename);
+    final patchRes = await _client.patch(
+      _uri('/me/avatar'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'avatarUrl': url}),
+    );
+    _decode(patchRes);
+    return url;
+  }
+
+  /// Personaliza a zona (somente governador). Campos nulos não são alterados.
+  Future<void> customizeTerritory(
+    String territoryId, {
+    String? customName,
+    String? color,
+    String? iconName,
+    String? backgroundUrl,
+  }) async {
+    final res = await _client.patch(
+      _uri('/territories/$territoryId/customize'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        if (customName != null) 'customName': customName,
+        if (color != null) 'color': color,
+        if (iconName != null) 'iconName': iconName,
+        if (backgroundUrl != null) 'backgroundUrl': backgroundUrl,
+      }),
+    );
+    _decode(res);
   }
 }

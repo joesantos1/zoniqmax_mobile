@@ -108,7 +108,7 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
                               Text(
                                 t.name,
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w900, fontSize: 18),
+                                    fontWeight: FontWeight.w700, fontSize: 18),
                               ),
                               Text(
                                 '${t.centerLat.toStringAsFixed(4)}, ${t.centerLng.toStringAsFixed(4)}',

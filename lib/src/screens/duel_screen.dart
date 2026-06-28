@@ -77,38 +77,39 @@ class _DuelScreenState extends State<DuelScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('DUELO')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: _result != null
-            ? _DuelResultView(result: _result!, duelId: _duel!.id, onAgain: _restart)
-            : FutureBuilder<Challenge>(
-                future: _setup,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('${snapshot.error}', textAlign: TextAlign.center),
-                          const SizedBox(height: 16),
-                          FilledButton(onPressed: _restart, child: const Text('Tentar de novo')),
-                        ],
-                      ),
-                    );
-                  }
-                  return SingleChildScrollView(
-                    child: ChallengePlayer(
-                      challenge: snapshot.data!,
-                      submitting: _submitting,
-                      onSubmit: _submit,
+      body: _result != null
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: _DuelResultView(
+                  result: _result!, duelId: _duel!.id, onAgain: _restart),
+            )
+          : FutureBuilder<Challenge>(
+              future: _setup,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${snapshot.error}', textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton(
+                            onPressed: _restart,
+                            child: const Text('Tentar de novo')),
+                      ],
                     ),
                   );
-                },
-              ),
-      ),
+                }
+                return ChallengePlayer(
+                  challenge: snapshot.data!,
+                  submitting: _submitting,
+                  onSubmit: _submit,
+                );
+              },
+            ),
     );
   }
 }
@@ -141,11 +142,11 @@ class _DuelResultView extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: color),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color),
             ),
             const SizedBox(height: 16),
             Text('Sua pontuação: ${result.yourScore.toStringAsFixed(0)}',
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
             const SizedBox(height: 8),
             if (waiting)
               Padding(

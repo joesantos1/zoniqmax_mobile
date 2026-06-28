@@ -174,7 +174,7 @@ class _ActivityButton extends StatelessWidget {
             label,
             style: const TextStyle(
               color: AppColors.white,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               letterSpacing: 1,
             ),
           ),
@@ -196,7 +196,7 @@ class _SectionTitle extends StatelessWidget {
         text.toUpperCase(),
         style: const TextStyle(
           fontSize: 18,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
           letterSpacing: 1,
         ),
       ),
