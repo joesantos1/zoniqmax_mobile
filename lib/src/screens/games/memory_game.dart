@@ -27,7 +27,8 @@ class MemoryGame extends StatefulWidget {
 
 class _MemoryGameState extends State<MemoryGame> {
   late List<String> _cards;
-  final List<int> _flipped = []; // viradas (não casadas), no máximo 2
+  late List<int> _order; // posição na tela -> índice original da carta
+  final List<int> _flipped = []; // índices originais virados (não casados), máx. 2
   final Set<int> _matched = {};
   final Set<int> _wrong = {}; // par errado em destaque momentâneo
   final List<List<int>> _pairs = [];
@@ -39,6 +40,10 @@ class _MemoryGameState extends State<MemoryGame> {
     _cards = ((widget.challenge.data['cards'] as List?) ?? const [])
         .map((e) => e.toString())
         .toList();
+    // Embaralha apenas a ORDEM de exibição; os índices originais (usados na
+    // resposta ao servidor) são preservados via _order.
+    _order = List<int>.generate(_cards.length, (i) => i)
+      ..shuffle(math.Random());
     widget.answer.value = _pairs;
   }
 
@@ -98,14 +103,17 @@ class _MemoryGameState extends State<MemoryGame> {
           crossAxisSpacing: spacing,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            for (int i = 0; i < n; i++)
-              _FlipCard(
-                value: _cards[i],
-                faceUp: _matched.contains(i) || _flipped.contains(i),
-                matched: _matched.contains(i),
-                wrong: _wrong.contains(i),
-                onTap: () => _tap(i),
-              ),
+            for (int p = 0; p < n; p++)
+              () {
+                final i = _order[p]; // índice original da carta nesta posição
+                return _FlipCard(
+                  value: _cards[i],
+                  faceUp: _matched.contains(i) || _flipped.contains(i),
+                  matched: _matched.contains(i),
+                  wrong: _wrong.contains(i),
+                  onTap: () => _tap(i),
+                );
+              }(),
           ],
         );
       },

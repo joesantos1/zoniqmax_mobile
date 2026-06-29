@@ -20,17 +20,27 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _nameCtrl =
       TextEditingController(text: widget.me.name);
+  late final TextEditingController _nickCtrl =
+      TextEditingController(text: widget.me.nickname ?? '');
   final _currentCtrl = TextEditingController();
   final _newCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+
+  static final _nickRegex = RegExp(r'^[A-Za-z0-9_]{3,20}$');
 
   bool _savingName = false;
   bool _savingPass = false;
   bool _changed = false;
 
+  // Verificador de disponibilidade do apelido
+  int _nickSeq = 0;
+  String? _nickMsg;
+  bool _nickFree = true;
+
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _nickCtrl.dispose();
     _currentCtrl.dispose();
     _newCtrl.dispose();
     _confirmCtrl.dispose();
@@ -42,14 +52,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _saveName() async {
+  Future<void> _onNickChanged(String v) async {
+    final nick = v.trim();
+    setState(() {
+      _nickFree = false;
+      _nickMsg = null;
+    });
+    if (nick.isEmpty) return;
+    if (nick.toLowerCase() == (widget.me.nickname ?? '').toLowerCase()) {
+      setState(() => _nickFree = true); // o próprio apelido atual
+      return;
+    }
+    if (!_nickRegex.hasMatch(nick)) {
+      setState(() => _nickMsg =
+          'Use 3 a 20 caracteres: letras (sem acento), números e _');
+      return;
+    }
+    final seq = ++_nickSeq;
+    setState(() => _nickMsg = 'Verificando…');
+    try {
+      final ok = await widget.api.nicknameAvailable(nick);
+      if (seq != _nickSeq || !mounted) return;
+      setState(() {
+        _nickFree = ok;
+        _nickMsg = ok ? 'Apelido disponível ✓' : 'Apelido já está em uso';
+      });
+    } catch (_) {
+      if (seq != _nickSeq || !mounted) return;
+      setState(() => _nickMsg = null);
+    }
+  }
+
+  Future<void> _saveProfile() async {
     final name = _nameCtrl.text.trim();
+    final nick = _nickCtrl.text.trim();
     if (name.isEmpty) return;
+    if (!_nickRegex.hasMatch(nick)) {
+      _snack('Apelido inválido: 3 a 20 letras, números e _');
+      return;
+    }
+    if (!_nickFree) {
+      _snack('Esse apelido já está em uso.');
+      return;
+    }
     setState(() => _savingName = true);
     try {
-      await widget.api.updateName(name);
+      await widget.api.updateProfile(name: name, nickname: nick);
       _changed = true;
-      _snack('Nome atualizado!');
+      _snack('Perfil atualizado!');
     } on ApiException catch (e) {
       _snack(e.message);
     } finally {
@@ -112,6 +162,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 10),
                   TextField(
+                    controller: _nickCtrl,
+                    onChanged: _onNickChanged,
+                    decoration: const InputDecoration(
+                      labelText: 'Apelido',
+                      helperText: 'Letras, números e _ (sem acento/espaço)',
+                    ),
+                  ),
+                  if (_nickMsg != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 4),
+                      child: Text(
+                        _nickMsg!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _nickFree ? AppColors.green : AppColors.red,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  TextField(
                     enabled: false,
                     decoration: InputDecoration(
                       labelText: 'E-mail',
@@ -120,10 +191,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: _savingName ? null : _saveName,
+                    onPressed: _savingName ? null : _saveProfile,
                     child: _savingName
                         ? const _Spin()
-                        : const Text('SALVAR NOME'),
+                        : const Text('SALVAR PERFIL'),
                   ),
                 ],
               ),

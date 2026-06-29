@@ -110,7 +110,7 @@ class _RankingTabState extends State<RankingTab> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   children: [
-                    Text(d.displayName,
+                    Text('Território: 🗺️${d.displayName}',
                         style: const TextStyle(
                             fontSize: 20, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 12),

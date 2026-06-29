@@ -5,12 +5,14 @@ class AuthResult {
   final String token;
   final String userId;
   final String name;
+  final String? nickname;
   final String email;
 
   AuthResult({
     required this.token,
     required this.userId,
     required this.name,
+    required this.nickname,
     required this.email,
   });
 
@@ -20,6 +22,7 @@ class AuthResult {
       token: json['token'] as String,
       userId: user['id'] as String,
       name: user['name'] as String,
+      nickname: user['nickname'] as String?,
       email: user['email'] as String,
     );
   }
@@ -126,13 +129,17 @@ class RankingEntry {
   final int position;
   final String userId;
   final String name;
+  final String? avatarUrl;
   final double effectiveInfluence;
+  final List<String> classes;
 
   RankingEntry({
     required this.position,
     required this.userId,
     required this.name,
+    required this.avatarUrl,
     required this.effectiveInfluence,
+    required this.classes,
   });
 
   factory RankingEntry.fromJson(Map<String, dynamic> json) {
@@ -140,7 +147,11 @@ class RankingEntry {
       position: json['position'] as int,
       userId: json['userId'] as String,
       name: json['name'] as String,
+      avatarUrl: json['avatarUrl'] as String?,
       effectiveInfluence: (json['effectiveInfluence'] as num?)?.toDouble() ?? 0,
+      classes: ((json['classes'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 }
@@ -227,6 +238,7 @@ class Challenge {
   final String id;
   final String type;
   final String area;
+  final String? theme;
   final int difficulty;
   final int baseTimeSeconds;
   final Map<String, dynamic> data;
@@ -235,6 +247,7 @@ class Challenge {
     required this.id,
     required this.type,
     required this.area,
+    required this.theme,
     required this.difficulty,
     required this.baseTimeSeconds,
     required this.data,
@@ -245,6 +258,7 @@ class Challenge {
       id: json['id'] as String,
       type: json['type'] as String,
       area: json['area'] as String,
+      theme: json['theme'] as String?,
       difficulty: json['difficulty'] as int,
       baseTimeSeconds: json['baseTimeSeconds'] as int,
       data: Map<String, dynamic>.from(json['data'] as Map),
@@ -444,6 +458,7 @@ class AttemptSummary {
 class PublicProfile {
   final String id;
   final String name;
+  final String? nickname;
   final String? avatarUrl;
   final List<KnowledgeXp> knowledgeXp;
   final int totalAttempts;
@@ -455,6 +470,7 @@ class PublicProfile {
   PublicProfile({
     required this.id,
     required this.name,
+    required this.nickname,
     required this.avatarUrl,
     required this.knowledgeXp,
     required this.totalAttempts,
@@ -463,6 +479,10 @@ class PublicProfile {
     required this.classTotals,
     required this.recentAttempts,
   });
+
+  /// Apelido quando houver; senão, o nome.
+  String get displayName =>
+      (nickname != null && nickname!.isNotEmpty) ? nickname! : name;
 
   double get accuracy =>
       totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
@@ -476,6 +496,7 @@ class PublicProfile {
     return PublicProfile(
       id: json['id'] as String,
       name: json['name'] as String,
+      nickname: json['nickname'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       knowledgeXp: list('knowledgeXp', KnowledgeXp.fromJson),
       totalAttempts: (json['totalAttempts'] as num?)?.toInt() ?? 0,
@@ -490,6 +511,7 @@ class PublicProfile {
 class Me {
   final String id;
   final String name;
+  final String? nickname;
   final String email;
   final String? avatarUrl;
   final List<KnowledgeXp> knowledgeXp;
@@ -500,6 +522,7 @@ class Me {
   Me({
     required this.id,
     required this.name,
+    required this.nickname,
     required this.email,
     required this.avatarUrl,
     required this.knowledgeXp,
@@ -507,6 +530,10 @@ class Me {
     required this.successfulAttempts,
     required this.territories,
   });
+
+  /// Apelido quando houver; senão, o nome.
+  String get displayName =>
+      (nickname != null && nickname!.isNotEmpty) ? nickname! : name;
 
   /// Taxa de acerto em % (0 quando ainda não há tentativas).
   double get accuracy =>
@@ -527,6 +554,7 @@ class Me {
     return Me(
       id: json['id'] as String,
       name: json['name'] as String,
+      nickname: json['nickname'] as String?,
       email: json['email'] as String,
       avatarUrl: json['avatarUrl'] as String?,
       knowledgeXp: xp,

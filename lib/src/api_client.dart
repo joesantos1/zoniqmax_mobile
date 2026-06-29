@@ -71,26 +71,48 @@ class ApiClient {
 
   // ---- Auth ----
 
-  Future<AuthResult> register(String name, String email, String password) async {
+  Future<AuthResult> register(
+    String name,
+    String nickname,
+    String email,
+    String password,
+  ) async {
     final res = await _client.post(
       _uri('/auth/register'),
       headers: _headers(),
-      body: jsonEncode({'name': name, 'email': email, 'password': password}),
+      body: jsonEncode({
+        'name': name,
+        'nickname': nickname,
+        'email': email,
+        'password': password,
+      }),
     );
     final result = AuthResult.fromJson(_decode(res) as Map<String, dynamic>);
     await _saveSession(result.token, result.userId);
     return result;
   }
 
-  Future<AuthResult> login(String email, String password) async {
+  /// Login por e-mail OU apelido.
+  Future<AuthResult> login(String identifier, String password) async {
     final res = await _client.post(
       _uri('/auth/login'),
       headers: _headers(),
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode({'identifier': identifier, 'password': password}),
     );
     final result = AuthResult.fromJson(_decode(res) as Map<String, dynamic>);
     await _saveSession(result.token, result.userId);
     return result;
+  }
+
+  /// Verifica se um apelido está disponível (formato válido + não usado).
+  Future<bool> nicknameAvailable(String nickname) async {
+    final res = await _client.get(
+      _uri('/auth/nickname-available'
+          '?nickname=${Uri.encodeQueryComponent(nickname)}'),
+      headers: _headers(),
+    );
+    final body = _decode(res) as Map<String, dynamic>;
+    return body['available'] == true;
   }
 
   // ---- Territórios ----
@@ -156,6 +178,8 @@ class ApiClient {
     required Object answer,
     required int timeSpentSeconds,
     String? territoryId,
+    double? userLat,
+    double? userLng,
   }) async {
     final res = await _client.post(
       _uri('/challenges/$challengeId/attempt'),
@@ -164,6 +188,8 @@ class ApiClient {
         'answer': answer,
         'timeSpentSeconds': timeSpentSeconds,
         if (territoryId != null) 'territoryId': territoryId,
+        if (userLat != null) 'userLat': userLat,
+        if (userLng != null) 'userLng': userLng,
       }),
     );
     return AttemptResult.fromJson(_decode(res) as Map<String, dynamic>);
@@ -222,11 +248,14 @@ class ApiClient {
     return PublicProfile.fromJson(_decode(res) as Map<String, dynamic>);
   }
 
-  Future<void> updateName(String name) async {
+  Future<void> updateProfile({String? name, String? nickname}) async {
     final res = await _client.patch(
       _uri('/me/profile'),
       headers: _headers(auth: true),
-      body: jsonEncode({'name': name}),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (nickname != null) 'nickname': nickname,
+      }),
     );
     _decode(res);
   }

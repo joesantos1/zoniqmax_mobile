@@ -16,11 +16,17 @@ class ChallengeScreen extends StatefulWidget {
     required this.api,
     this.territoryId,
     this.area,
+    this.userLat,
+    this.userLng,
   });
 
   final ApiClient api;
   final String? territoryId;
   final String? area;
+
+  /// Localização do jogador, exigida para pontuar num território (regra de presença).
+  final double? userLat;
+  final double? userLng;
 
   @override
   State<ChallengeScreen> createState() => _ChallengeScreenState();
@@ -112,6 +118,68 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
     _restart();
   }
 
+  Future<void> _showLevelPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Escolha o nível',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                for (int d = 1; d <= 5; d++)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        _changeDifficulty(d);
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: d == _difficulty
+                              ? AppColors.orange
+                              : AppColors.paperDark,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: d == _difficulty
+                                ? AppColors.orange
+                                : AppColors.line,
+                            width: 1.5,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '$d',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 20,
+                            color: d == _difficulty
+                                ? AppColors.white
+                                : AppColors.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submit(Challenge challenge, Object answer, int timeSpent) async {
     setState(() => _submitting = true);
     try {
@@ -120,6 +188,8 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
         answer: answer,
         timeSpentSeconds: timeSpent,
         territoryId: widget.territoryId,
+        userLat: widget.userLat,
+        userLng: widget.userLng,
       );
       if (!mounted) return;
       setState(() {
@@ -139,7 +209,20 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('DESAFIO')),
+      appBar: AppBar(
+        title: const Text('DESAFIO'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: _showLevelPicker,
+              icon: const Icon(LucideIcons.gauge, size: 18),
+              label: Text('Nível $_difficulty',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           _StatsHeader(
@@ -152,7 +235,6 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
             aboveInfluence: _aboveInf,
             showRanking: widget.territoryId != null,
           ),
-          _DifficultyBar(value: _difficulty, onChanged: _changeDifficulty),
           Expanded(
             child: FutureBuilder<Challenge>(
               future: _future,
@@ -272,54 +354,6 @@ class _StatsHeader extends StatelessWidget {
               const Text('Jogue para entrar no ranking!',
                   style: TextStyle(fontSize: 11)),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Barra de seleção de dificuldade (1 a 5).
-class _DifficultyBar extends StatelessWidget {
-  const _DifficultyBar({required this.value, required this.onChanged});
-
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Row(
-        children: [
-          const Text('NÍVEL:', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(width: 10),
-          for (int d = 1; d <= 5; d++)
-            Expanded(
-              child: GestureDetector(
-                onTap: () => onChanged(d),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color: d == value ? AppColors.orange : AppColors.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: d == value ? AppColors.orange : AppColors.line,
-                      width: 1.5,
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$d',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: d == value ? AppColors.white : AppColors.muted,
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );

@@ -6,6 +6,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/stat_tile.dart';
 import 'challenge_screen.dart';
+import 'player_profile_screen.dart';
 import 'tab_header.dart';
 import 'territory_customize_screen.dart';
 
@@ -16,11 +17,19 @@ class TerritoryTab extends StatefulWidget {
     super.key,
     required this.api,
     required this.territoryId,
+    this.isPresent = false,
+    this.userLat,
+    this.userLng,
     this.onChanged,
   });
 
   final ApiClient api;
   final String? territoryId;
+
+  /// O jogador está fisicamente neste território? Só então pode realizar desafios.
+  final bool isPresent;
+  final double? userLat;
+  final double? userLng;
 
   /// Chamado quando a zona é personalizada (para o mapa atualizar).
   final VoidCallback? onChanged;
@@ -73,9 +82,21 @@ class _TerritoryTabState extends State<TerritoryTab> {
           builder: (_) => ChallengeScreen(
             api: widget.api,
             territoryId: widget.territoryId,
+            userLat: widget.userLat,
+            userLng: widget.userLng,
           ),
         ))
         .then((_) => _reload());
+  }
+
+  void _openPlayer(RankingEntry e) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PlayerProfileScreen(
+        api: widget.api,
+        userId: e.userId,
+        initialName: e.name,
+      ),
+    ));
   }
 
   void _customize(TerritoryDetail detail) {
@@ -196,21 +217,245 @@ class _TerritoryTabState extends State<TerritoryTab> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: _startChallenge,
-                      icon: const Icon(LucideIcons.brain, size: 18),
-                      label: const Text('INICIAR DESAFIOS'),
-                    ),
+                    if (widget.isPresent)
+                      FilledButton.icon(
+                        onPressed: _startChallenge,
+                        icon: const Icon(LucideIcons.brain, size: 18),
+                        label: const Text('INICIAR DESAFIOS'),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.brown.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
+                          border: Border.all(
+                              color: AppColors.brown.withValues(alpha: 0.30)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(LucideIcons.mapPinOff,
+                                size: 20, color: AppColors.brown),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Você está visualizando este território. '
+                                'Vá até a zona para realizar desafios e pontuar aqui.',
+                                style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     if (iAmGovernor) ...[
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: () => _customize(d),
                         icon: const Icon(LucideIcons.palette, size: 18),
-                        label: const Text('PERSONALIZAR ZONA'),
+                        label: const Text('PERSONALIZAR TERRITÓRIO'),
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.users,
+                            size: 18, color: AppColors.brown),
+                        const SizedBox(width: 8),
+                        Text(
+                          'JOGADORES (${d.generalRanking.length})',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (d.generalRanking.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'Nenhum jogador ativo ainda. Seja o primeiro!',
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                      )
+                    else
+                      for (final e in d.generalRanking)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _PlayerRow(
+                            entry: e,
+                            isGovernor: e.userId == d.governorUserId,
+                            isMe: e.userId == myId,
+                            onTap: () => _openPlayer(e),
+                          ),
+                        ),
                   ],
                 ),
+    );
+  }
+}
+
+const _classLabels = <String, String>{
+  'CONQUISTADOR': 'Conquistador',
+  'PESQUISADOR': 'Pesquisador',
+  'MENTOR': 'Mentor',
+  'EXPLORADOR': 'Explorador',
+  'GUARDIAO': 'Guardião',
+  'RECRUTADOR': 'Recrutador',
+};
+
+/// Linha de jogador no território: posição, foto, nome (+ tags), classes e influência.
+class _PlayerRow extends StatelessWidget {
+  const _PlayerRow({
+    required this.entry,
+    required this.isGovernor,
+    required this.isMe,
+    required this.onTap,
+  });
+
+  final RankingEntry entry;
+  final bool isGovernor;
+  final bool isMe;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAvatar = entry.avatarUrl != null && entry.avatarUrl!.isNotEmpty;
+    final accent = entry.classes.isNotEmpty
+        ? (AppColors.classColors[entry.classes.first] ?? AppColors.orange)
+        : AppColors.brown;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      onTap: onTap,
+      child: ComicPanel(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              child: Text(
+                '#${entry.position}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: AppColors.muted),
+              ),
+            ),
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: accent.withValues(alpha: 0.18),
+              backgroundImage:
+                  hasAvatar ? NetworkImage(entry.avatarUrl!) : null,
+              child: hasAvatar
+                  ? null
+                  : Text(
+                      entry.name.isNotEmpty
+                          ? entry.name[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: accent),
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          entry.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                      ),
+                      if (isGovernor) ...[
+                        const SizedBox(width: 6),
+                        const Icon(LucideIcons.crown,
+                            size: 15, color: AppColors.red),
+                      ],
+                      if (isMe) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.orange.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('você',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.orange)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (entry.classes.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final c in entry.classes) _ClassChip(classType: c),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Icon(LucideIcons.zap, size: 14, color: AppColors.blue),
+                const SizedBox(height: 2),
+                Text(
+                  entry.effectiveInfluence.toStringAsFixed(0),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ClassChip extends StatelessWidget {
+  const _ClassChip({required this.classType});
+  final String classType;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.classColors[classType] ?? AppColors.brown;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(classIcon(classType), size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            _classLabels[classType] ?? classType,
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: color),
+          ),
+        ],
+      ),
     );
   }
 }

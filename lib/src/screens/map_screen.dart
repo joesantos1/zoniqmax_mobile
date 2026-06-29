@@ -23,8 +23,8 @@ class MapScreen extends StatefulWidget {
 
   final ApiClient api;
 
-  /// Chamado quando a zona atual do jogador é determinada.
-  final void Function(MapTerritory)? onCurrentZone;
+  /// Chamado quando a zona atual do jogador é determinada (com a localização real).
+  final void Function(MapTerritory zone, LatLng location)? onCurrentZone;
 
   /// Chamado ao tocar numa zona (abre a aba Território).
   final void Function(MapTerritory)? onOpenTerritory;
@@ -99,7 +99,7 @@ class _MapScreenState extends State<MapScreen> {
       _territories = territories;
     });
     final cur = _currentZone;
-    if (cur != null) widget.onCurrentZone?.call(cur);
+    if (cur != null) widget.onCurrentZone?.call(cur, location);
   }
 
   /// Carga inicial: adquire o GPS (lento) e busca os territórios.
@@ -146,12 +146,35 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  /// Re-adquire o GPS (caso o jogador tenha se deslocado), recarrega os
+  /// territórios da nova posição e recentraliza a câmera nele.
+  Future<void> _recenterFresh() async {
+    setState(() => _refreshing = true);
+    try {
+      final loc = await _determinePosition();
+      await _fetchTerritories(loc);
+      _mapController.move(loc, 15);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Falha ao localizar: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   void _openTerritory(MapTerritory t) => widget.onOpenTerritory?.call(t);
 
   void _startChallenge(MapTerritory t) {
     Navigator.of(context)
         .push(MaterialPageRoute(
-          builder: (_) => ChallengeScreen(api: widget.api, territoryId: t.id),
+          builder: (_) => ChallengeScreen(
+            api: widget.api,
+            territoryId: t.id,
+            userLat: _userLocation?.latitude,
+            userLng: _userLocation?.longitude,
+          ),
         ))
         .then((_) => _load());
   }
@@ -230,7 +253,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   color: base.withValues(alpha: governed ? 0.28 : 0.18),
                   borderColor: base,
-                  borderStrokeWidth: t.isCurrent ? 4 : (governed ? 3.5 : 2),
+                  borderStrokeWidth: t.isCurrent ? 3 : (governed ? 2 : 1),
                 );
               }).toList(),
             ),
@@ -328,9 +351,7 @@ class _MapScreenState extends State<MapScreen> {
                 heroTag: 'recenter',
                 backgroundColor: AppColors.orange,
                 foregroundColor: AppColors.ink,
-                onPressed: _userLocation == null
-                    ? null
-                    : () => _mapController.move(_userLocation!, 13),
+                onPressed: _refreshing ? null : _recenterFresh,
                 child: const Icon(LucideIcons.locateFixed, size: 18),
               ),
             ],

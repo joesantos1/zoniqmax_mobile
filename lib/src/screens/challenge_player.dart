@@ -7,6 +7,7 @@ import '../theme.dart';
 import 'games/association_game.dart';
 import 'games/memory_game.dart';
 import 'games/ordering_game.dart';
+import 'games/puzzle_game.dart';
 
 /// Widget que "joga" um desafio: enunciado, coleta da resposta e cronômetro.
 /// O botão de ação fica FIXO no rodapé (grande, fácil de tocar):
@@ -72,6 +73,7 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
       case 'ORDENACAO_RAPIDA':
         return _answer.value ?? <dynamic>[];
       case 'ASSOCIACAO_VISUAL':
+      case 'MINI_PUZZLE':
         return _answer.value ?? <String, String>{};
       default:
         final options = widget.challenge.options;
@@ -110,7 +112,9 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
   }
 
   /// Tipos que ocupam toda a área visível (sem rolagem).
-  bool get _fillsViewport => widget.challenge.type == 'MEMORIA_VISUAL';
+  bool get _fillsViewport =>
+      widget.challenge.type == 'MEMORIA_VISUAL' ||
+      widget.challenge.type == 'MINI_PUZZLE';
 
   @override
   Widget build(BuildContext context) {
@@ -172,10 +176,22 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
       children: [
         Row(
           children: [
-            ComicTag(label: challenge.area, color: AppColors.blue),
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ComicTag(label: challenge.area, color: AppColors.blue),
+                  ComicTag(
+                      label: 'NÍVEL ${challenge.difficulty}',
+                      color: AppColors.brown),
+                  if (challenge.theme != null && challenge.theme!.isNotEmpty)
+                    ComicTag(label: challenge.theme!, color: AppColors.orange),
+                ],
+              ),
+            ),
             const SizedBox(width: 8),
-            ComicTag(label: 'NÍVEL ${challenge.difficulty}', color: AppColors.brown),
-            const Spacer(),
             Text(
               '${_secondsLeft < 0 ? 0 : _secondsLeft}s',
               style: TextStyle(
@@ -231,6 +247,12 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
         );
       case 'ASSOCIACAO_VISUAL':
         return AssociationGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+        );
+      case 'MINI_PUZZLE':
+        return PuzzleGame(
           challenge: widget.challenge,
           answer: _answer,
           locked: locked,

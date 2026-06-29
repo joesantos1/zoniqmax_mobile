@@ -170,11 +170,11 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PERSONALIZAR ZONA')),
+      appBar: AppBar(title: const Text('PERSONALIZAR TERRITÓRIO')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const _Label('NOME DA ZONA'),
+          const _Label('NOME DO TERRITÓRIO'),
           TextField(
             controller: _nameCtrl,
             maxLength: 40,

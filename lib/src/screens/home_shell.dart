@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
@@ -24,11 +25,23 @@ class _HomeShellState extends State<HomeShell> {
   int _mapVersion = 0; // incrementado para forçar atualização do mapa
   MapTerritory? _active;
 
+  // Presença: zona onde o jogador está fisicamente + sua localização real.
+  String? _currentZoneId;
+  LatLng? _currentLocation;
+
   void _setActive(MapTerritory t, {bool open = false}) {
     setState(() {
       _active = t;
       if (open) _index = 1;
     });
+  }
+
+  void _onCurrentZone(MapTerritory t, LatLng location) {
+    setState(() {
+      _currentZoneId = t.id;
+      _currentLocation = location;
+    });
+    if (_active == null) _setActive(t);
   }
 
   void _onTerritoryChanged() => setState(() => _mapVersion++);
@@ -42,15 +55,16 @@ class _HomeShellState extends State<HomeShell> {
           MapScreen(
             api: widget.api,
             refreshSignal: _mapVersion,
-            onCurrentZone: (t) {
-              if (_active == null) _setActive(t);
-            },
+            onCurrentZone: _onCurrentZone,
             onOpenTerritory: (t) => _setActive(t, open: true),
           ),
           TerritoryTab(
             key: ValueKey('terr-${_active?.id}'),
             api: widget.api,
             territoryId: _active?.id,
+            isPresent: _active?.id != null && _active?.id == _currentZoneId,
+            userLat: _currentLocation?.latitude,
+            userLng: _currentLocation?.longitude,
             onChanged: _onTerritoryChanged,
           ),
           RankingTab(

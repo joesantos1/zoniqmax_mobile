@@ -205,8 +205,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         : (hasPhoto
                             ? null
                             : Text(
-                                me.name.isNotEmpty
-                                    ? me.name[0].toUpperCase()
+                                me.displayName.isNotEmpty
+                                    ? me.displayName[0].toUpperCase()
                                     : '?',
                                 style: const TextStyle(
                                     color: AppColors.paper,
@@ -238,11 +238,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(me.name,
+                    Text(me.displayName,
                         style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
                             color: AppColors.ink)),
+                    if (me.nickname != null && me.nickname!.isNotEmpty)
+                      Text(me.name,
+                          style: const TextStyle(
+                              color: AppColors.muted, fontSize: 12)),
                     Text(me.email,
                         style: const TextStyle(
                             color: AppColors.ink, fontSize: 13)),

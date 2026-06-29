@@ -19,19 +19,55 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _nickCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+
+  static final _nickRegex = RegExp(r'^[A-Za-z0-9_]{3,20}$');
 
   bool _isRegister = false;
   bool _loading = false;
   String? _error;
 
+  // Verificador de disponibilidade do apelido
+  int _nickSeq = 0;
+  bool _nickOk = false;
+  String? _nickMsg;
+
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _nickCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _onNickChanged(String v) async {
+    final nick = v.trim();
+    setState(() {
+      _nickOk = false;
+      _nickMsg = null;
+    });
+    if (nick.isEmpty) return;
+    if (!_nickRegex.hasMatch(nick)) {
+      setState(() => _nickMsg =
+          'Use 3 a 20 caracteres: letras (sem acento), números e _');
+      return;
+    }
+    final seq = ++_nickSeq;
+    setState(() => _nickMsg = 'Verificando…');
+    try {
+      final ok = await widget.api.nicknameAvailable(nick);
+      if (seq != _nickSeq || !mounted) return;
+      setState(() {
+        _nickOk = ok;
+        _nickMsg = ok ? 'Apelido disponível ✓' : 'Apelido já está em uso';
+      });
+    } catch (_) {
+      if (seq != _nickSeq || !mounted) return;
+      setState(() => _nickMsg = null);
+    }
   }
 
   Future<void> _submit() async {
@@ -44,6 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_isRegister) {
         await widget.api.register(
           _nameCtrl.text.trim(),
+          _nickCtrl.text.trim(),
           _emailCtrl.text.trim(),
           _passwordCtrl.text,
         );
@@ -94,21 +131,62 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 32),
-                  if (_isRegister)
+                  if (_isRegister) ...[
                     TextFormField(
                       controller: _nameCtrl,
                       decoration: const InputDecoration(labelText: 'Nome'),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Informe o nome' : null,
                     ),
-                  if (_isRegister) const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _nickCtrl,
+                      onChanged: _onNickChanged,
+                      decoration: InputDecoration(
+                        labelText: 'Apelido',
+                        helperText: 'Letras, números e _ (sem acento/espaço)',
+                        suffixIcon: _nickOk
+                            ? const Icon(LucideIcons.circleCheck,
+                                color: AppColors.green)
+                            : null,
+                      ),
+                      validator: (v) {
+                        final nick = (v ?? '').trim();
+                        if (!_nickRegex.hasMatch(nick)) {
+                          return 'Apelido inválido (3 a 20: letras, números, _)';
+                        }
+                        if (!_nickOk) return 'Apelido indisponível ou não verificado';
+                        return null;
+                      },
+                    ),
+                    if (_nickMsg != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, left: 4),
+                        child: Text(
+                          _nickMsg!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _nickOk ? AppColors.green : AppColors.red,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                  ],
                   TextFormField(
                     controller: _emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'E-mail'),
-                    validator: (v) => (v == null || !v.contains('@'))
-                        ? 'E-mail inválido'
-                        : null,
+                    keyboardType: _isRegister
+                        ? TextInputType.emailAddress
+                        : TextInputType.text,
+                    decoration: InputDecoration(
+                        labelText: _isRegister ? 'E-mail' : 'E-mail ou apelido'),
+                    validator: (v) {
+                      final s = v?.trim() ?? '';
+                      if (_isRegister) {
+                        return s.contains('@') ? null : 'E-mail inválido';
+                      }
+                      return s.isEmpty ? 'Informe e-mail ou apelido' : null;
+                    },
                   ),
                   const SizedBox(height: 12),
                   TextFormField(

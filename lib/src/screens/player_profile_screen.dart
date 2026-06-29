@@ -105,7 +105,9 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       child: hasPhoto
                           ? null
                           : Text(
-                              p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
+                              p.displayName.isNotEmpty
+                                  ? p.displayName[0].toUpperCase()
+                                  : '?',
                               style: const TextStyle(
                                   color: AppColors.paper,
                                   fontWeight: FontWeight.w700,
@@ -113,7 +115,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: Text(p.name,
+                      child: Text(p.displayName,
                           style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
