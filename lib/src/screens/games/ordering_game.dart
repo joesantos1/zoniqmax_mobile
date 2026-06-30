@@ -36,9 +36,10 @@ class _OrderingGameState extends State<OrderingGame> {
     widget.answer.value = _items.map((e) => e['id'] as String).toList();
   }
 
-  void _onReorder(int oldIndex, int newIndex) {
+  void _onReorderItem(int oldIndex, int newIndex) {
+    if (widget.locked) return;
+    // onReorderItem já entrega o newIndex ajustado (sem o "-1" manual)
     setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
       final item = _items.removeAt(oldIndex);
       _items.insert(newIndex, item);
       _publish();
@@ -50,41 +51,47 @@ class _OrderingGameState extends State<OrderingGame> {
     return ReorderableListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      buildDefaultDragHandles: !widget.locked,
-      // ignore: deprecated_member_use
-      onReorder: widget.locked ? (_, __) {} : _onReorder,
+      // desliga os handles padrão (que usam long-press com atraso)
+      buildDefaultDragHandles: false,
+      onReorderItem: _onReorderItem,
       children: [
         for (int i = 0; i < _items.length; i++)
-          Padding(
+          // arraste imediato (sem espera) a partir de qualquer ponto do item
+          ReorderableDragStartListener(
             key: ValueKey(_items[i]['id']),
-            padding: const EdgeInsets.only(bottom: 10),
-            child: ComicPanel(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: AppColors.brown,
-                    child: Text(
-                      '${i + 1}',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+            index: i,
+            enabled: !widget.locked,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ComicPanel(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: AppColors.brown,
+                      child: Text(
+                        '${i + 1}',
+                        style: const TextStyle(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _items[i]['label'] as String,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _items[i]['label'] as String,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16),
+                      ),
                     ),
-                  ),
-                  if (!widget.locked)
-                    const Icon(Icons.drag_handle, color: AppColors.ink),
-                ],
+                    if (!widget.locked)
+                      const Icon(Icons.drag_indicator, color: AppColors.muted),
+                  ],
+                ),
               ),
             ),
           ),

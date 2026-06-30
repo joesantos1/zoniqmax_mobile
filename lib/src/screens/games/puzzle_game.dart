@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models.dart';
@@ -111,21 +113,64 @@ class _PuzzleGameState extends State<PuzzleGame> {
     );
   }
 
+  // Geometria da grade do tabuleiro (no máximo 3 por fileira).
+  static const double _gapX = 22; // espaço horizontal (linha entre blocos)
+  static const double _gapY = 34; // espaço vertical (faixa do fluxo na quebra)
+  static const double _marginX = 16; // margem p/ o fluxo contornar na quebra
+  static const double _rowH = 64; // altura do bloco
+
   Widget _buildBoard() {
-    // Os blocos fluem em linha (row) e quebram para a próxima linha ao atingir
-    // a borda da tela — ocupando toda a largura disponível.
+    final n = _board.length;
+    if (n == 0) return const SizedBox.shrink();
+
     return LayoutBuilder(
       builder: (context, constraints) {
+        final cols = n < 3 ? n : 3; // no máximo 3 por fileira
+        final rowsCount = (n + cols - 1) ~/ cols;
+        final cellW = ((constraints.maxWidth -
+                    2 * _marginX -
+                    (cols - 1) * _gapX) /
+                cols)
+            .clamp(46.0, 132.0)
+            .toDouble();
+        final totalW = 2 * _marginX + cols * cellW + (cols - 1) * _gapX;
+        final totalH = rowsCount * _rowH + (rowsCount - 1) * _gapY;
+
+        double leftOf(int k) => _marginX + (k % cols) * (cellW + _gapX);
+        double topOf(int k) => (k ~/ cols) * (_rowH + _gapY);
+
         return SizedBox(
-          width: constraints.maxWidth,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            runAlignment: WrapAlignment.center,
+          width: totalW,
+          height: totalH,
+          child: Stack(
             children: [
-              for (final cell in _board)
-                cell.isSlot ? _slot(cell.slot!) : _fixedTile(cell.fixed ?? ''),
+              // linha de FLUXO ligando todos os blocos (atrás)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _FlowPainter(
+                    count: n,
+                    cols: cols,
+                    cellW: cellW,
+                    rowH: _rowH,
+                    gapX: _gapX,
+                    gapY: _gapY,
+                    marginX: _marginX,
+                    totalW: totalW,
+                    color: AppColors.brown,
+                  ),
+                ),
+              ),
+              // blocos posicionados na grade
+              for (var k = 0; k < n; k++)
+                Positioned(
+                  left: leftOf(k),
+                  top: topOf(k),
+                  width: cellW,
+                  height: _rowH,
+                  child: _board[k].isSlot
+                      ? _slot(_board[k].slot!)
+                      : _fixedTile(_board[k].fixed ?? ''),
+                ),
             ],
           ),
         );
@@ -198,6 +243,94 @@ class _PuzzleGameState extends State<PuzzleGame> {
   }
 }
 
+/// Desenha a linha de "fluxo" que liga todos os blocos do tabuleiro: horizontal
+/// dentro da fileira e, na quebra, contornando pela margem direita → faixa entre
+/// as fileiras → margem esquerda, até o primeiro bloco da fileira de baixo.
+class _FlowPainter extends CustomPainter {
+  _FlowPainter({
+    required this.count,
+    required this.cols,
+    required this.cellW,
+    required this.rowH,
+    required this.gapX,
+    required this.gapY,
+    required this.marginX,
+    required this.totalW,
+    required this.color,
+  });
+
+  final int count, cols;
+  final double cellW, rowH, gapX, gapY, marginX, totalW;
+  final Color color;
+
+  double _centerY(int k) => (k ~/ cols) * (rowH + gapY) + rowH / 2;
+  double _leftX(int k) => marginX + (k % cols) * (cellW + gapX);
+  double _rightX(int k) => _leftX(k) + cellW;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    for (var k = 0; k < count - 1; k++) {
+      final sameRow = (k ~/ cols) == ((k + 1) ~/ cols);
+      if (sameRow) {
+        // segmento horizontal no vão entre os dois blocos
+        final y = _centerY(k);
+        canvas.drawLine(
+          Offset(_rightX(k), y), Offset(_leftX(k + 1), y), paint,
+        );
+      } else {
+        // contorno em "fluxo": direita → desce na faixa → esquerda → sobe
+        final yA = _centerY(k);
+        final yB = _centerY(k + 1);
+        final bandY = (k ~/ cols) * (rowH + gapY) + rowH + gapY / 2;
+        final rightLine = totalW - marginX / 2;
+        final leftLine = marginX / 2;
+        final pts = <Offset>[
+          Offset(_rightX(k), yA),
+          Offset(rightLine, yA),
+          Offset(rightLine, bandY),
+          Offset(leftLine, bandY),
+          Offset(leftLine, yB),
+          Offset(_leftX(k + 1), yB),
+        ];
+        canvas.drawPath(_rounded(pts, 8), paint);
+      }
+    }
+  }
+
+  /// Polilinha ortogonal com cantos arredondados.
+  Path _rounded(List<Offset> pts, double r) {
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (var i = 1; i < pts.length - 1; i++) {
+      final p = pts[i];
+      final a = _towards(p, pts[i - 1], r);
+      final b = _towards(p, pts[i + 1], r);
+      path.lineTo(a.dx, a.dy);
+      path.quadraticBezierTo(p.dx, p.dy, b.dx, b.dy);
+    }
+    path.lineTo(pts.last.dx, pts.last.dy);
+    return path;
+  }
+
+  Offset _towards(Offset from, Offset to, double r) {
+    final dx = to.dx - from.dx, dy = to.dy - from.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len == 0) return from;
+    final t = math.min(r / len, 0.5);
+    return Offset(from.dx + dx * t, from.dy + dy * t);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FlowPainter old) =>
+      old.count != count || old.cols != cols || old.cellW != cellW;
+}
+
 enum _TileKind { fixed, piece, slotEmpty, slotHover }
 
 class _Tile extends StatelessWidget {
@@ -229,7 +362,7 @@ class _Tile extends StatelessWidget {
     switch (kind) {
       case _TileKind.fixed:
         bg = AppColors.surface;
-        border = AppColors.line;
+        border = AppColors.brown;
         fg = AppColors.ink;
         break;
       case _TileKind.piece:
@@ -239,7 +372,7 @@ class _Tile extends StatelessWidget {
         break;
       case _TileKind.slotEmpty:
         bg = AppColors.paperDark;
-        border = AppColors.line;
+        border = AppColors.brown;
         fg = AppColors.muted;
         break;
       case _TileKind.slotHover:
@@ -250,7 +383,8 @@ class _Tile extends StatelessWidget {
     }
 
     final isLong = label.length > _wrapThreshold;
-    final fontSize = isLong ? 11.0 : 22.0; // 50% menor quando o texto é longo
+    // fonte grande para rótulos curtos; menor (com quebra) para longos
+    final fontSize = isLong ? 15.0 : 28.0;
 
     Widget tile = Container(
       constraints: const BoxConstraints(
@@ -258,7 +392,7 @@ class _Tile extends StatelessWidget {
         minHeight: _minSize,
         maxWidth: _maxWidth,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),

@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api_client.dart';
 import '../geo.dart';
@@ -10,8 +15,9 @@ import '../models.dart';
 import '../theme.dart';
 import 'challenge_screen.dart';
 
-/// Aba Mapa: mapa 2D (OSM) com a localização real do jogador. Mostra a zona atual
-/// e as zonas governadas. Toque numa zona abre a aba Território (via callback).
+/// Aba Mapa: mapa 2D (CartoDB) com a localização real do jogador. Carrega as zonas
+/// por região visível (viewport) + as zonas do jogador, com cache por célula,
+/// refresh incremental (delta `since`) e snapshot para abrir instantâneo.
 class MapScreen extends StatefulWidget {
   const MapScreen({
     super.key,
@@ -29,8 +35,8 @@ class MapScreen extends StatefulWidget {
   /// Chamado ao tocar numa zona (abre a aba Território).
   final void Function(MapTerritory)? onOpenTerritory;
 
-  /// Incrementado externamente para forçar uma atualização do mapa (ex.: após
-  /// personalizar uma zona). Reaproveita a localização em cache (sem re-disparar GPS).
+  /// Incrementado externamente (customização de zona OU seleção da aba do mapa)
+  /// para disparar um refresh incremental barato — sem re-acionar o GPS.
   final int refreshSignal;
 
   @override
@@ -39,20 +45,42 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   static const LatLng _fallback = LatLng(-23.55052, -46.633308); // São Paulo
+  static const String _snapshotKey = 'map_snapshot_v1';
+  static const double _boundsPadDeg = 0.03; // ~3 km de folga no viewport
 
   final MapController _mapController = MapController();
   LatLng? _userLocation;
-  List<MapTerritory> _territories = [];
+  LatLng _initialCenter = _fallback;
+
+  /// Cache de territórios por célula (cellKey) — fonte do render.
+  final Map<String, MapTerritory> _byCell = {};
+  String? _cursor; // maior updatedAt visto (delta `since`)
+  MapTerritory? _currentZone;
+
+  /// Vértices do hexágono memoizados por célula (centro+raio são fixos).
+  final Map<String, List<LatLng>> _vertexCache = {};
+
   bool _loading = true;
   bool _usedFallback = false;
-  String? _error;
-
   bool _refreshing = false;
+  String? _error;
+  Timer? _debounce;
+
+  List<MapTerritory> get _territories => _byCell.values.toList(growable: false);
+
+  /// Move a câmera com segurança (após o frame; ignora se o mapa ainda não montou).
+  void _centerOn(LatLng target, double zoom) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        _mapController.move(target, zoom);
+      } catch (_) {}
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _hydrate().then((_) => _load());
   }
 
   @override
@@ -61,12 +89,20 @@ class _MapScreenState extends State<MapScreen> {
     if (widget.refreshSignal != old.refreshSignal) _refresh();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  // ---- Localização ----
+
   Future<LatLng> _determinePosition() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _usedFallback = true;
-        return _fallback;
+        return _lastKnownOr(_fallback);
       }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -75,43 +111,46 @@ class _MapScreenState extends State<MapScreen> {
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         _usedFallback = true;
-        return _fallback;
+        return _lastKnownOr(_fallback);
       }
-      final pos = await Geolocator.getCurrentPosition();
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
       return LatLng(pos.latitude, pos.longitude);
     } catch (_) {
-      _usedFallback = true;
-      return _fallback;
+      // timeout/erro: usa a última posição conhecida (não trava)
+      return _lastKnownOr(_fallback, markFallback: true);
     }
   }
 
-  /// Busca os territórios para uma localização (sem GPS). Atualiza estado e notifica
-  /// a zona atual. Centralização inicial vem de `initialCenter`.
-  Future<void> _fetchTerritories(LatLng location) async {
-    final territories = await widget.api.territoriesNear(
-      location.latitude,
-      location.longitude,
-      rings: 2,
-    );
-    if (!mounted) return;
-    setState(() {
-      _userLocation = location;
-      _territories = territories;
-    });
-    final cur = _currentZone;
-    if (cur != null) widget.onCurrentZone?.call(cur, location);
+  Future<LatLng> _lastKnownOr(LatLng fb, {bool markFallback = false}) async {
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return LatLng(last.latitude, last.longitude);
+    } catch (_) {}
+    if (markFallback) _usedFallback = true;
+    return fb;
   }
 
-  /// Carga inicial: adquire o GPS (lento) e busca os territórios.
+  // ---- Carga / refresh ----
+
+  /// Carga inicial: GPS (com timeout) → viewport completo + minhas zonas.
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      if (_byCell.isEmpty) _loading = true;
       _error = null;
     });
     try {
       final location = await _determinePosition();
-      await _fetchTerritories(location);
+      _initialCenter = location;
+      await _fetchViewport(location, _boundsAround(location), full: true);
+      await _fetchMine();
       if (mounted) setState(() => _loading = false);
+      _centerOn(location, 13);
+      _persist();
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
@@ -129,13 +168,15 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// Atualização rápida: reaproveita a localização em cache (sem GPS).
+  /// Refresh incremental (delta) reaproveitando a localização e o viewport atuais.
   Future<void> _refresh() async {
     final loc = _userLocation;
     if (loc == null) return _load();
     setState(() => _refreshing = true);
     try {
-      await _fetchTerritories(loc);
+      await _fetchViewport(loc, _currentBounds() ?? _boundsAround(loc),
+          full: false);
+      _persist();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -146,14 +187,16 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// Re-adquire o GPS (caso o jogador tenha se deslocado), recarrega os
-  /// territórios da nova posição e recentraliza a câmera nele.
+  /// Re-adquire o GPS (jogador se deslocou), recarrega a região e recentraliza.
   Future<void> _recenterFresh() async {
     setState(() => _refreshing = true);
     try {
       final loc = await _determinePosition();
-      await _fetchTerritories(loc);
-      _mapController.move(loc, 15);
+      _initialCenter = loc;
+      await _fetchViewport(loc, _boundsAround(loc), full: true);
+      await _fetchMine();
+      _centerOn(loc, 15);
+      _persist();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -163,6 +206,196 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) setState(() => _refreshing = false);
     }
   }
+
+  /// Busca as zonas do viewport. `full=true` reconcilia remoções (zonas que
+  /// perderam governador) substituindo a fatia governada dentro dos limites.
+  Future<void> _fetchViewport(
+    LatLng location,
+    ({double minLat, double minLng, double maxLat, double maxLng}) b, {
+    required bool full,
+  }) async {
+    final list = await widget.api.mapView(
+      lat: location.latitude,
+      lng: location.longitude,
+      minLat: b.minLat,
+      minLng: b.minLng,
+      maxLat: b.maxLat,
+      maxLng: b.maxLng,
+      since: full ? null : _cursor,
+    );
+    if (!mounted) return;
+    setState(() {
+      _userLocation = location;
+      if (full) _removeGovernedWithin(b);
+      _mergeAll(list);
+    });
+    final cur = _currentZone;
+    if (cur != null) widget.onCurrentZone?.call(cur, location);
+  }
+
+  Future<void> _fetchMine() async {
+    try {
+      final mine = await widget.api.myZones();
+      if (!mounted) return;
+      setState(() => _mergeAll(mine));
+    } catch (_) {
+      // minhas zonas são secundárias — falha silenciosa
+    }
+  }
+
+  /// Após um desafio: atualiza só a célula atual (sem mexer no zoom/posição).
+  Future<void> _refreshCurrentCell() async {
+    final loc = _userLocation;
+    if (loc == null) return;
+    try {
+      final list = await widget.api.mapView(
+        lat: loc.latitude,
+        lng: loc.longitude,
+        minLat: loc.latitude - 0.001,
+        minLng: loc.longitude - 0.001,
+        maxLat: loc.latitude + 0.001,
+        maxLng: loc.longitude + 0.001,
+      );
+      if (!mounted) return;
+      setState(() => _mergeAll(list));
+      _persist();
+    } catch (_) {}
+  }
+
+  // ---- Cache helpers ----
+
+  void _mergeAll(List<MapTerritory> list) {
+    for (final t in list) {
+      _byCell[t.cacheKey] = t;
+      _vertexCache.remove(t.cacheKey); // invalida (centro pode ter mudado? não, mas seguro)
+      final iso = t.updatedAt?.toIso8601String();
+      if (iso != null && (_cursor == null || iso.compareTo(_cursor!) > 0)) {
+        _cursor = iso;
+      }
+    }
+    _recomputeCurrentZone();
+  }
+
+  /// Remove zonas GOVERNADAS dentro do viewport (exceto a atual) antes de um
+  /// refresh completo — assim zonas que perderam governador somem do mapa.
+  void _removeGovernedWithin(
+      ({double minLat, double minLng, double maxLat, double maxLng}) b) {
+    _byCell.removeWhere((_, t) =>
+        t.isGoverned &&
+        !t.isCurrent &&
+        t.centerLat >= b.minLat &&
+        t.centerLat <= b.maxLat &&
+        t.centerLng >= b.minLng &&
+        t.centerLng <= b.maxLng);
+  }
+
+  void _recomputeCurrentZone() {
+    MapTerritory? cur;
+    for (final t in _byCell.values) {
+      if (t.isCurrent) {
+        cur = t;
+        break;
+      }
+    }
+    // fallback: mais próxima da localização (uma vez só, barato)
+    if (cur == null && _userLocation != null && _byCell.isNotEmpty) {
+      double best = double.infinity;
+      for (final t in _byCell.values) {
+        final d = distanceKm(_userLocation!, LatLng(t.centerLat, t.centerLng));
+        if (d < best) {
+          best = d;
+          cur = t;
+        }
+      }
+    }
+    _currentZone = cur;
+  }
+
+  List<LatLng> _verticesFor(MapTerritory t) => _vertexCache.putIfAbsent(
+        t.cacheKey,
+        () => hexagonVertices(LatLng(t.centerLat, t.centerLng), t.radiusKm),
+      );
+
+  ({double minLat, double minLng, double maxLat, double maxLng}) _boundsAround(
+      LatLng c) {
+    const pad = 0.06; // ~6 km de raio na carga inicial
+    return (
+      minLat: c.latitude - pad,
+      minLng: c.longitude - pad,
+      maxLat: c.latitude + pad,
+      maxLng: c.longitude + pad,
+    );
+  }
+
+  ({double minLat, double minLng, double maxLat, double maxLng})?
+      _currentBounds() {
+    try {
+      final b = _mapController.camera.visibleBounds;
+      return (
+        minLat: b.south - _boundsPadDeg,
+        minLng: b.west - _boundsPadDeg,
+        maxLat: b.north + _boundsPadDeg,
+        maxLng: b.east + _boundsPadDeg,
+      );
+    } catch (_) {
+      return null; // câmera ainda não montada
+    }
+  }
+
+  // ---- Snapshot (cold start instantâneo) ----
+
+  Future<void> _hydrate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_snapshotKey);
+      if (raw == null) return;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final cells = (data['cells'] as List?) ?? const [];
+      for (final e in cells) {
+        final t = MapTerritory.fromJson(e as Map<String, dynamic>);
+        _byCell[t.cacheKey] = t;
+      }
+      _cursor = data['cursor'] as String?;
+      final c = data['center'] as Map<String, dynamic>?;
+      if (c != null) {
+        _initialCenter = LatLng(
+          (c['lat'] as num).toDouble(),
+          (c['lng'] as num).toDouble(),
+        );
+      }
+      _recomputeCurrentZone();
+      if (mounted && _byCell.isNotEmpty) setState(() => _loading = false);
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // limita o snapshot para não crescer indefinidamente
+      final cells = _byCell.values.take(300).map((t) => t.toJson()).toList();
+      final c = _userLocation ?? _initialCenter;
+      await prefs.setString(
+        _snapshotKey,
+        jsonEncode({
+          'cells': cells,
+          'cursor': _cursor,
+          'center': {'lat': c.latitude, 'lng': c.longitude},
+        }),
+      );
+    } catch (_) {}
+  }
+
+  /// Rótulo relativo curto ("há 5 min", "há 2 h", "há 3 d") ou null.
+  String? _agoLabel(DateTime? t) {
+    if (t == null) return null;
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'agora';
+    if (d.inMinutes < 60) return 'há ${d.inMinutes} min';
+    if (d.inHours < 24) return 'há ${d.inHours} h';
+    return 'há ${d.inDays} d';
+  }
+
+  // ---- Navegação ----
 
   void _openTerritory(MapTerritory t) => widget.onOpenTerritory?.call(t);
 
@@ -176,29 +409,22 @@ class _MapScreenState extends State<MapScreen> {
             userLng: _userLocation?.longitude,
           ),
         ))
-        .then((_) => _load());
+        .then((_) => _refreshCurrentCell()); // não recarrega tudo (preserva zoom)
   }
 
-  /// Zona onde o jogador está: a marcada como atual pelo servidor (ou, em último
-  /// caso, a mais próxima do jogador).
-  MapTerritory? get _currentZone {
-    if (_territories.isEmpty) return null;
-    for (final t in _territories) {
-      if (t.isCurrent) return t;
-    }
-    final loc = _userLocation;
-    if (loc == null) return null;
-    MapTerritory? nearest;
-    double best = double.infinity;
-    for (final t in _territories) {
-      final d = distanceKm(loc, LatLng(t.centerLat, t.centerLng));
-      if (d < best) {
-        best = d;
-        nearest = t;
-      }
-    }
-    return nearest;
+  /// Reage ao pan/zoom: ao assentar, recarrega as zonas da nova região (debounce).
+  void _onPositionChanged(MapCamera camera, bool hasGesture) {
+    if (!hasGesture) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 450), () {
+      final loc = _userLocation;
+      final b = _currentBounds();
+      if (loc == null || b == null) return;
+      _fetchViewport(loc, b, full: true).then((_) => _persist());
+    });
   }
+
+  // ---- UI ----
 
   @override
   Widget build(BuildContext context) {
@@ -206,10 +432,10 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget _buildBody() {
-    if (_loading) {
+    if (_loading && _byCell.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (_error != null && _byCell.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -222,16 +448,17 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
-    final center = _userLocation ?? _fallback;
     final topPad = MediaQuery.of(context).padding.top;
     return Stack(
       children: [
         FlutterMap(
           mapController: _mapController,
-          options: MapOptions(initialCenter: center, initialZoom: 13),
+          options: MapOptions(
+            initialCenter: _userLocation ?? _initialCenter,
+            initialZoom: 13,
+            onPositionChanged: _onPositionChanged,
+          ),
           children: [
-            // Basemap claro e minimalista (CartoDB Positron): ruas + nomes,
-            // sem a poluição de lojas/POIs do OSM padrão — mais leve e legível.
             TileLayer(
               urlTemplate:
                   'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
@@ -242,15 +469,11 @@ class _MapScreenState extends State<MapScreen> {
             PolygonLayer(
               polygons: _territories.map((t) {
                 final governed = t.isGoverned;
-                // cor personalizada do governador, se houver
                 final base = t.color != null
                     ? AppColors.zoneColor(t.color)
                     : (governed ? AppColors.red : AppColors.orange);
                 return Polygon(
-                  points: hexagonVertices(
-                    LatLng(t.centerLat, t.centerLng),
-                    t.radiusKm,
-                  ),
+                  points: _verticesFor(t),
                   color: base.withValues(alpha: governed ? 0.28 : 0.18),
                   borderColor: base,
                   borderStrokeWidth: t.isCurrent ? 3 : (governed ? 2 : 1),
@@ -367,11 +590,14 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildZoneCta(MapTerritory zone) {
     final iAmGovernor = zone.governorUserId != null &&
         zone.governorUserId == widget.api.currentUserId;
+    final since = _agoLabel(zone.governorUpdatedAt);
     final String status;
     if (iAmGovernor) {
-      status = '👑 Você governa esta zona — defenda sua posição!';
+      status = '👑 Você governa esta zona — defenda sua posição!'
+          '${since != null ? ' (capturada $since)' : ''}';
     } else if (zone.isGoverned) {
-      status = 'Governada por ${zone.governorName}. Dispute o domínio!';
+      status = 'Governada por ${zone.governorName}'
+          '${since != null ? ' · capturada $since' : ''}. Dispute o domínio!';
     } else {
       status = 'Zona livre — seja o primeiro a dominá-la!';
     }
@@ -430,8 +656,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-/// Avatar do governador no centro do hexágono: foto (se houver) ou inicial do nome,
-/// com contorno HQ e uma coroa indicando domínio.
+/// Avatar do governador no centro do hexágono: foto (se houver, em cache) ou
+/// inicial do nome, com contorno HQ e uma coroa indicando domínio.
 class _GovernorBadge extends StatelessWidget {
   const _GovernorBadge({required this.territory});
 
@@ -454,7 +680,8 @@ class _GovernorBadge extends StatelessWidget {
             border: Border.all(color: AppColors.ink, width: 2.5),
             image: hasPhoto
                 ? DecorationImage(
-                    image: NetworkImage(territory.governorAvatarUrl!),
+                    image: CachedNetworkImageProvider(
+                        territory.governorAvatarUrl!),
                     fit: BoxFit.cover,
                   )
                 : null,

@@ -54,7 +54,7 @@ class Territory {
   }
 }
 
-/// Território da grade hexagonal do mapa (endpoint /territories/near).
+/// Território da grade hexagonal do mapa (endpoints /territories/map e /mine).
 class MapTerritory {
   final String id;
   final String name;
@@ -62,6 +62,7 @@ class MapTerritory {
   final double centerLng;
   final double radiusKm;
   final bool isCurrent;
+  final String? cellKey;
   final String? customName;
   final String? color;
   final String? iconName;
@@ -69,6 +70,8 @@ class MapTerritory {
   final String? governorUserId;
   final String? governorName;
   final String? governorAvatarUrl;
+  final DateTime? governorUpdatedAt;
+  final DateTime? updatedAt;
 
   MapTerritory({
     required this.id,
@@ -77,6 +80,7 @@ class MapTerritory {
     required this.centerLng,
     required this.radiusKm,
     required this.isCurrent,
+    required this.cellKey,
     required this.customName,
     required this.color,
     required this.iconName,
@@ -84,6 +88,8 @@ class MapTerritory {
     required this.governorUserId,
     required this.governorName,
     required this.governorAvatarUrl,
+    required this.governorUpdatedAt,
+    required this.updatedAt,
   });
 
   bool get isGoverned => governorUserId != null;
@@ -91,11 +97,17 @@ class MapTerritory {
       ? customName!
       : name;
 
+  /// Chave de cache: cellKey (identidade global da célula) ou o id como fallback.
+  String get cacheKey => cellKey ?? id;
+
   /// Inicial do nome do governador (fallback quando não há foto).
   String get governorInitial =>
       (governorName != null && governorName!.isNotEmpty)
           ? governorName![0].toUpperCase()
           : '?';
+
+  static DateTime? _date(dynamic v) =>
+      v is String ? DateTime.tryParse(v) : null;
 
   factory MapTerritory.fromJson(Map<String, dynamic> json) {
     return MapTerritory(
@@ -103,8 +115,9 @@ class MapTerritory {
       name: json['name'] as String,
       centerLat: (json['centerLat'] as num).toDouble(),
       centerLng: (json['centerLng'] as num).toDouble(),
-      radiusKm: (json['radiusKm'] as num?)?.toDouble() ?? 3,
+      radiusKm: (json['radiusKm'] as num?)?.toDouble() ?? 2,
       isCurrent: json['isCurrent'] as bool? ?? false,
+      cellKey: json['cellKey'] as String?,
       customName: json['customName'] as String?,
       color: json['color'] as String?,
       iconName: json['iconName'] as String?,
@@ -112,8 +125,29 @@ class MapTerritory {
       governorUserId: json['governorUserId'] as String?,
       governorName: json['governorName'] as String?,
       governorAvatarUrl: json['governorAvatarUrl'] as String?,
+      governorUpdatedAt: _date(json['governorUpdatedAt']),
+      updatedAt: _date(json['updatedAt']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'centerLat': centerLat,
+        'centerLng': centerLng,
+        'radiusKm': radiusKm,
+        'isCurrent': isCurrent,
+        'cellKey': cellKey,
+        'customName': customName,
+        'color': color,
+        'iconName': iconName,
+        'backgroundUrl': backgroundUrl,
+        'governorUserId': governorUserId,
+        'governorName': governorName,
+        'governorAvatarUrl': governorAvatarUrl,
+        'governorUpdatedAt': governorUpdatedAt?.toIso8601String(),
+        'updatedAt': updatedAt?.toIso8601String(),
+      };
 
   /// Converte para Territory (usado ao abrir o detalhe).
   Territory toTerritory() => Territory(

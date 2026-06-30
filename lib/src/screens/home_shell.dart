@@ -77,7 +77,11 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) => setState(() {
+          // ao (re)abrir a aba do mapa, dispara um refresh incremental barato
+          if (i == 0 && _index != 0) _mapVersion++;
+          _index = i;
+        }),
         destinations: const [
           NavigationDestination(icon: Icon(LucideIcons.map), label: 'Mapa'),
           NavigationDestination(

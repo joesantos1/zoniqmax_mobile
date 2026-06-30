@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -346,8 +347,9 @@ class _PlayerRow extends StatelessWidget {
             CircleAvatar(
               radius: 22,
               backgroundColor: accent.withValues(alpha: 0.18),
-              backgroundImage:
-                  hasAvatar ? NetworkImage(entry.avatarUrl!) : null,
+              backgroundImage: hasAvatar
+                  ? CachedNetworkImageProvider(entry.avatarUrl!)
+                  : null,
               child: hasAvatar
                   ? null
                   : Text(

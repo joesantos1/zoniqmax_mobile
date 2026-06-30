@@ -114,7 +114,8 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
   /// Tipos que ocupam toda a área visível (sem rolagem).
   bool get _fillsViewport =>
       widget.challenge.type == 'MEMORIA_VISUAL' ||
-      widget.challenge.type == 'MINI_PUZZLE';
+      widget.challenge.type == 'MINI_PUZZLE' ||
+      widget.challenge.type == 'ASSOCIACAO_VISUAL';
 
   @override
   Widget build(BuildContext context) {

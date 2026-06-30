@@ -24,7 +24,8 @@ class AssociationGame extends StatefulWidget {
 
 class _AssociationGameState extends State<AssociationGame>
     with SingleTickerProviderStateMixin {
-  static const double _rowH = 56;
+  static const double _minRowH = 56;
+  static const double _maxRowH = 104;
   static const double _gap = 14;
   static const double _connectorZone = 48;
 
@@ -94,86 +95,117 @@ class _AssociationGameState extends State<AssociationGame>
 
   @override
   Widget build(BuildContext context) {
-    final n =
-        _left.length > _right.length ? _left.length : _right.length;
-    final totalH = n * _rowH + (n - 1) * _gap;
+    final prompt = widget.challenge.prompt;
+    final n = _left.length > _right.length ? _left.length : _right.length;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final colW = (w - _connectorZone) / 2;
-
-        return SizedBox(
-          width: w,
-          height: totalH,
-          child: Stack(
-            children: [
-              // linhas de ligação (animadas)
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: _anim,
-                  builder: (context, _) => CustomPaint(
-                    painter: _LinesPainter(
-                      connections: _connections,
-                      leftIndex: (id) => _indexOf(_left, id),
-                      rightIndex: (id) => _indexOf(_right, id),
-                      colorOf: _connColor,
-                      rowH: _rowH,
-                      gap: _gap,
-                      colW: colW,
-                      width: w,
-                      progress: _anim.value,
-                    ),
-                  ),
-                ),
-              ),
-              // coluna esquerda
-              Positioned(
-                left: 0,
-                top: 0,
-                width: colW,
-                child: Column(
-                  children: [
-                    for (final item in _left)
-                      _itemTile(
-                        label: item['label'] as String,
-                        selected: _selectedLeft == item['id'],
-                        connected: _connections.containsKey(item['id']),
-                        color: _connections.containsKey(item['id'])
-                            ? _connColor(item['id'] as String)
-                            : null,
-                        onTap: () => _tapLeft(item['id'] as String),
-                        dotRight: true,
-                      ),
-                  ],
-                ),
-              ),
-              // coluna direita
-              Positioned(
-                right: 0,
-                top: 0,
-                width: colW,
-                child: Column(
-                  children: [
-                    for (final item in _right)
-                      _itemTile(
-                        label: item['label'] as String,
-                        selected: false,
-                        connected:
-                            _connections.containsValue(item['id']),
-                        color: _connections.containsValue(item['id'])
-                            ? _connColorByRight(item['id'] as String)
-                            : null,
-                        onTap: () => _tapRight(item['id'] as String),
-                        dotRight: false,
-                      ),
-                  ],
-                ),
-              ),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (prompt.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              prompt,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
           ),
-        );
-      },
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final colW = (w - _connectorZone) / 2;
+
+              // distribui a altura disponível entre as linhas (cresce se sobra
+              // espaço; encolhe até o mínimo; rola se ainda assim não couber).
+              final maxH = constraints.maxHeight;
+              final available =
+                  (maxH.isFinite ? maxH : _maxRowH * n + _gap * (n - 1));
+              final ideal = n > 0 ? (available - (n - 1) * _gap) / n : _minRowH;
+              final rowH = ideal.clamp(_minRowH, _maxRowH).toDouble();
+              final totalH = n * rowH + (n - 1) * _gap;
+              final fontSize = (rowH * 0.26).clamp(15.0, 24.0).toDouble();
+
+              final content = SizedBox(
+                width: w,
+                height: totalH,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: AnimatedBuilder(
+                        animation: _anim,
+                        builder: (context, _) => CustomPaint(
+                          painter: _LinesPainter(
+                            connections: _connections,
+                            leftIndex: (id) => _indexOf(_left, id),
+                            rightIndex: (id) => _indexOf(_right, id),
+                            colorOf: _connColor,
+                            rowH: rowH,
+                            gap: _gap,
+                            colW: colW,
+                            width: w,
+                            progress: _anim.value,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      width: colW,
+                      child: Column(
+                        children: [
+                          for (final item in _left)
+                            _itemTile(
+                              label: item['label'] as String,
+                              rowH: rowH,
+                              fontSize: fontSize,
+                              selected: _selectedLeft == item['id'],
+                              connected: _connections.containsKey(item['id']),
+                              color: _connections.containsKey(item['id'])
+                                  ? _connColor(item['id'] as String)
+                                  : null,
+                              onTap: () => _tapLeft(item['id'] as String),
+                              dotRight: true,
+                            ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      width: colW,
+                      child: Column(
+                        children: [
+                          for (final item in _right)
+                            _itemTile(
+                              label: item['label'] as String,
+                              rowH: rowH,
+                              fontSize: fontSize,
+                              selected: false,
+                              connected:
+                                  _connections.containsValue(item['id']),
+                              color: _connections.containsValue(item['id'])
+                                  ? _connColorByRight(item['id'] as String)
+                                  : null,
+                              onTap: () => _tapRight(item['id'] as String),
+                              dotRight: false,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              // cabe na altura → centraliza; senão → rola
+              return totalH <= available
+                  ? Center(child: content)
+                  : SingleChildScrollView(child: content);
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -186,6 +218,8 @@ class _AssociationGameState extends State<AssociationGame>
 
   Widget _itemTile({
     required String label,
+    required double rowH,
+    required double fontSize,
     required bool selected,
     required bool connected,
     required Color? color,
@@ -202,13 +236,13 @@ class _AssociationGameState extends State<AssociationGame>
       ),
     );
     return Container(
-      height: _rowH,
+      height: rowH,
       margin: const EdgeInsets.only(bottom: _gap),
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: selected ? AppColors.orange : AppColors.white,
             borderRadius: BorderRadius.circular(10),
@@ -222,8 +256,13 @@ class _AssociationGameState extends State<AssociationGame>
                 child: Text(
                   label,
                   textAlign: dotRight ? TextAlign.start : TextAlign.end,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
+                  softWrap: true, // quebra em várias linhas quando há espaço
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: fontSize,
+                      height: 1.15),
                 ),
               ),
               if (dotRight) const SizedBox(width: 8),

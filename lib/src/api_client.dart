@@ -130,16 +130,33 @@ class ApiClient {
     return TerritoryDetail.fromJson(_decode(res) as Map<String, dynamic>);
   }
 
-  /// Grade hexagonal de territórios ao redor de um ponto (base do mapa).
-  Future<List<MapTerritory>> territoriesNear(
-    double lat,
-    double lng, {
-    int rings = 2,
+  /// Base do mapa: zona atual + zonas governadas no viewport (bounds).
+  /// Com [since] (ISO), retorna apenas o delta de zonas alteradas — refresh barato.
+  Future<List<MapTerritory>> mapView({
+    required double lat,
+    required double lng,
+    required double minLat,
+    required double minLng,
+    required double maxLat,
+    required double maxLng,
+    String? since,
   }) async {
-    final res = await _client.get(
-      _uri('/territories/near?lat=$lat&lng=$lng&rings=$rings'),
-      headers: _headers(),
+    final q = StringBuffer(
+      '/territories/map?lat=$lat&lng=$lng'
+      '&minLat=$minLat&minLng=$minLng&maxLat=$maxLat&maxLng=$maxLng',
     );
+    if (since != null) q.write('&since=${Uri.encodeQueryComponent(since)}');
+    final res = await _client.get(_uri(q.toString()), headers: _headers(auth: true));
+    final data = _decode(res) as List<dynamic>;
+    return data
+        .map((e) => MapTerritory.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Zonas do jogador (governa ou tem influência) — sempre visíveis no mapa.
+  Future<List<MapTerritory>> myZones() async {
+    final res =
+        await _client.get(_uri('/territories/mine'), headers: _headers(auth: true));
     final data = _decode(res) as List<dynamic>;
     return data
         .map((e) => MapTerritory.fromJson(e as Map<String, dynamic>))

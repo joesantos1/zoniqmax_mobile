@@ -122,12 +122,16 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
+      // respeita os recortes do sistema (status bar / barra de navegação)
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-        child: Column(
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -175,6 +179,7 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
               ],
             ),
           ],
+          ),
         ),
       ),
     );
