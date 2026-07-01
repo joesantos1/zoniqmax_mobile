@@ -13,7 +13,8 @@ import '../api_client.dart';
 import '../geo.dart';
 import '../models.dart';
 import '../theme.dart';
-import 'challenge_screen.dart';
+import 'challenge_setup_screen.dart';
+import 'hex_background_layer.dart';
 
 /// Aba Mapa: mapa 2D (CartoDB) com a localização real do jogador. Carrega as zonas
 /// por região visível (viewport) + as zonas do jogador, com cache por célula,
@@ -45,7 +46,9 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   static const LatLng _fallback = LatLng(-23.55052, -46.633308); // São Paulo
-  static const String _snapshotKey = 'map_snapshot_v1';
+  // snapshot por USUÁRIO — evita vazar o mapa de uma conta para outra
+  String get _snapshotKey =>
+      'map_snapshot_v1_${widget.api.currentUserId ?? 'anon'}';
   static const double _boundsPadDeg = 0.03; // ~3 km de folga no viewport
 
   final MapController _mapController = MapController();
@@ -402,7 +405,7 @@ class _MapScreenState extends State<MapScreen> {
   void _startChallenge(MapTerritory t) {
     Navigator.of(context)
         .push(MaterialPageRoute(
-          builder: (_) => ChallengeScreen(
+          builder: (_) => ChallengeSetupScreen(
             api: widget.api,
             territoryId: t.id,
             userLat: _userLocation?.latitude,
@@ -466,15 +469,21 @@ class _MapScreenState extends State<MapScreen> {
               userAgentPackageName: 'com.zoniqmax.app',
               maxZoom: 19,
             ),
+            // imagem de fundo do governador, recortada no hexágono (transparente)
+            HexBackgroundLayer(territories: _territories),
             PolygonLayer(
               polygons: _territories.map((t) {
                 final governed = t.isGoverned;
+                final hasBg =
+                    t.backgroundUrl != null && t.backgroundUrl!.isNotEmpty;
                 final base = t.color != null
                     ? AppColors.zoneColor(t.color)
                     : (governed ? AppColors.red : AppColors.orange);
                 return Polygon(
                   points: _verticesFor(t),
-                  color: base.withValues(alpha: governed ? 0.28 : 0.18),
+                  // com imagem de fundo, quase sem preenchimento (deixa a foto aparecer)
+                  color: base.withValues(
+                      alpha: hasBg ? 0.06 : (governed ? 0.28 : 0.18)),
                   borderColor: base,
                   borderStrokeWidth: t.isCurrent ? 3 : (governed ? 2 : 1),
                 );

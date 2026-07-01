@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
+import '../image_compress.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/stat_tile.dart';
@@ -73,7 +74,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       if (picked == null) return;
       setState(() => _uploading = true);
-      final bytes = await picked.readAsBytes();
+      final raw = await picked.readAsBytes();
+      final bytes = await compressImageUnder1MB(raw); // garante < 1 MB
       await widget.api.uploadAvatar(bytes, picked.name);
       if (!mounted) return;
       setState(() => _uploading = false);

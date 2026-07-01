@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
 import 'models.dart';
@@ -50,6 +51,13 @@ class ApiClient {
     _userId = null;
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userIdKey);
+    // limpa o snapshot do mapa do usuário que saiu (evita vazar entre contas)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in prefs.getKeys()) {
+        if (k.startsWith('map_snapshot_')) await prefs.remove(k);
+      }
+    } catch (_) {}
   }
 
   Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
@@ -173,21 +181,70 @@ class ApiClient {
     _decode(res);
   }
 
+  // ---- Mentoria (bônus de tempo) ----
+
+  /// Envia um bônus de tempo a um jogador do território (regras no servidor).
+  Future<void> sendBonus(
+    String receiverUserId,
+    String area,
+    int bonusSeconds,
+  ) async {
+    final res = await _client.post(
+      _uri('/bonuses'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'receiverUserId': receiverUserId,
+        'area': area,
+        'bonusSeconds': bonusSeconds,
+      }),
+    );
+    _decode(res);
+  }
+
   // ---- Desafios ----
 
-  Future<Challenge> nextChallenge({String? area, int? difficulty}) async {
+  Future<Challenge> nextChallenge({
+    List<String>? areas,
+    int? difficulty,
+    List<String>? themes,
+    bool includeSolved = false,
+  }) async {
     final params = <String, String>{
-      if (area != null) 'area': area,
+      if (areas != null && areas.isNotEmpty) 'areas': areas.join(','),
       if (difficulty != null) 'difficulty': '$difficulty',
+      if (themes != null && themes.isNotEmpty) 'themes': themes.join(','),
+      if (includeSolved) 'includeSolved': 'true',
     };
     final query = params.isEmpty
         ? ''
-        : '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
+        : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
     final res = await _client.get(
       _uri('/challenges/next$query'),
       headers: _headers(auth: true),
     );
     return Challenge.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  /// Inicia uma sessão de desafios — reinicia o streak anti-chute no servidor.
+  Future<void> startChallengeSession() async {
+    final res = await _client.post(
+      _uri('/challenges/session'),
+      headers: _headers(auth: true),
+    );
+    _decode(res);
+  }
+
+  /// Catálogo de desafios agrupados por área/tema/nível, com contagens de novos
+  /// e já resolvidos (revisão) — o cliente decide o que mostrar.
+  Future<List<ChallengeOption>> challengeCatalog() async {
+    final res = await _client.get(
+      _uri('/challenges/catalog'),
+      headers: _headers(auth: true),
+    );
+    final data = _decode(res) as List<dynamic>;
+    return data
+        .map((e) => ChallengeOption.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<AttemptResult> submitAttempt(
@@ -257,6 +314,28 @@ class ApiClient {
   }
 
   /// Perfil público de outro jogador.
+  /// Histórico público de um jogador (desafios + bônus enviados); opcionalmente
+  /// filtrado por território.
+  Future<List<ActivityItem>> playerHistory(
+    String userId, {
+    String? territoryId,
+    int limit = 20,
+  }) async {
+    final params = <String, String>{
+      'limit': '$limit',
+      if (territoryId != null) 'territoryId': territoryId,
+    };
+    final q = '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
+    final res = await _client.get(
+      _uri('/users/$userId/history$q'),
+      headers: _headers(auth: true),
+    );
+    final data = _decode(res) as List<dynamic>;
+    return data
+        .map((e) => ActivityItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<PublicProfile> getPlayer(String userId) async {
     final res = await _client.get(
       _uri('/users/$userId'),

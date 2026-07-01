@@ -5,6 +5,7 @@ import '../api_client.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/stat_tile.dart';
+import 'history_screen.dart';
 
 /// Perfil PÚBLICO de um jogador (aberto ao tocar no nome dele no ranking).
 class PlayerProfileScreen extends StatefulWidget {
@@ -13,11 +14,17 @@ class PlayerProfileScreen extends StatefulWidget {
     required this.api,
     required this.userId,
     this.initialName,
+    this.territoryId,
+    this.territoryName,
   });
 
   final ApiClient api;
   final String userId;
   final String? initialName;
+
+  /// Quando aberto a partir de um território, o histórico fica escopado a ele.
+  final String? territoryId;
+  final String? territoryName;
 
   @override
   State<PlayerProfileScreen> createState() => _PlayerProfileScreenState();
@@ -67,7 +74,24 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text((widget.initialName ?? 'JOGADOR').toUpperCase())),
+      appBar: AppBar(
+        title: Text((widget.initialName ?? 'JOGADOR').toUpperCase()),
+        actions: [
+          IconButton(
+            tooltip: 'Histórico de ações',
+            icon: const Icon(LucideIcons.scrollText),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => HistoryScreen(
+                api: widget.api,
+                userId: widget.userId,
+                playerName: widget.initialName ?? 'Jogador',
+                territoryId: widget.territoryId,
+                territoryName: widget.territoryName,
+              ),
+            )),
+          ),
+        ],
+      ),
       body: FutureBuilder<PublicProfile>(
         future: _future,
         builder: (context, snapshot) {

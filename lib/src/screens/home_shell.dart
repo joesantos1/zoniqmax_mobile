@@ -26,7 +26,8 @@ class _HomeShellState extends State<HomeShell> {
   MapTerritory? _active;
 
   // Presença: zona onde o jogador está fisicamente + sua localização real.
-  String? _currentZoneId;
+  MapTerritory? _currentZone;
+  String? get _currentZoneId => _currentZone?.id;
   LatLng? _currentLocation;
 
   void _setActive(MapTerritory t, {bool open = false}) {
@@ -38,10 +39,22 @@ class _HomeShellState extends State<HomeShell> {
 
   void _onCurrentZone(MapTerritory t, LatLng location) {
     setState(() {
-      _currentZoneId = t.id;
+      _currentZone = t;
       _currentLocation = location;
     });
     if (_active == null) _setActive(t);
+  }
+
+  /// Está vendo um território DIFERENTE da sua zona atual?
+  bool get _viewingOther =>
+      _active != null && _active!.id != _currentZoneId;
+
+  void _backToCurrent() {
+    if (_currentZone != null) {
+      _setActive(_currentZone!);
+    } else {
+      setState(() => _index = 0); // sem zona atual conhecida → volta ao mapa
+    }
   }
 
   void _onTerritoryChanged() => setState(() => _mapVersion++);
@@ -66,11 +79,13 @@ class _HomeShellState extends State<HomeShell> {
             userLat: _currentLocation?.latitude,
             userLng: _currentLocation?.longitude,
             onChanged: _onTerritoryChanged,
+            onBackToCurrent: _viewingOther ? _backToCurrent : null,
           ),
           RankingTab(
             key: ValueKey('rank-${_active?.id}'),
             api: widget.api,
             territoryId: _active?.id,
+            onBackToCurrent: _viewingOther ? _backToCurrent : null,
           ),
           ProfileScreen(api: widget.api),
         ],

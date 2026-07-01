@@ -194,12 +194,14 @@ class ClassRankingEntry {
   final int position;
   final String userId;
   final String name;
+  final String? avatarUrl;
   final double score;
 
   ClassRankingEntry({
     required this.position,
     required this.userId,
     required this.name,
+    required this.avatarUrl,
     required this.score,
   });
 
@@ -208,6 +210,7 @@ class ClassRankingEntry {
       position: json['position'] as int,
       userId: json['userId'] as String,
       name: json['name'] as String,
+      avatarUrl: json['avatarUrl'] as String?,
       score: (json['score'] as num?)?.toDouble() ?? 0,
     );
   }
@@ -268,13 +271,83 @@ class TerritoryDetail {
   }
 }
 
+/// Item do histórico/extrato do jogador (desafio realizado ou bônus enviado).
+class ActivityItem {
+  final String kind; // 'attempt' | 'bonus_sent'
+  final DateTime at;
+  final String area;
+  // attempt
+  final String? challengeType;
+  final bool? success;
+  final double? score;
+  final String? territory;
+  // bonus_sent
+  final int? bonusSeconds;
+  final String? receiverName;
+  final String? status;
+
+  ActivityItem({
+    required this.kind,
+    required this.at,
+    required this.area,
+    this.challengeType,
+    this.success,
+    this.score,
+    this.territory,
+    this.bonusSeconds,
+    this.receiverName,
+    this.status,
+  });
+
+  factory ActivityItem.fromJson(Map<String, dynamic> json) => ActivityItem(
+        kind: json['kind'] as String,
+        at: DateTime.tryParse(json['at'] as String? ?? '') ?? DateTime.now(),
+        area: json['area'] as String,
+        challengeType: json['challengeType'] as String?,
+        success: json['success'] as bool?,
+        score: (json['score'] as num?)?.toDouble(),
+        territory: json['territory'] as String?,
+        bonusSeconds: (json['bonusSeconds'] as num?)?.toInt(),
+        receiverName: json['receiverName'] as String?,
+        status: json['status'] as String?,
+      );
+}
+
+/// Grupo do catálogo de desafios (área/tema/nível) com contagens de novos e
+/// já resolvidos (modo revisão).
+class ChallengeOption {
+  final String area;
+  final String? theme;
+  final int difficulty;
+  final int newCount; // ainda não resolvidos
+  final int solvedCount; // já pontuados (revisão)
+
+  ChallengeOption({
+    required this.area,
+    required this.theme,
+    required this.difficulty,
+    required this.newCount,
+    required this.solvedCount,
+  });
+
+  factory ChallengeOption.fromJson(Map<String, dynamic> json) => ChallengeOption(
+        area: json['area'] as String,
+        theme: json['theme'] as String?,
+        difficulty: (json['difficulty'] as num).toInt(),
+        newCount: (json['newCount'] as num?)?.toInt() ?? 0,
+        solvedCount: (json['solvedCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class Challenge {
   final String id;
   final String type;
   final String area;
   final String? theme;
   final int difficulty;
-  final int baseTimeSeconds;
+  final int baseTimeSeconds; // já inclui o bônus de mentoria, se houver
+  final int bonusSeconds; // bônus de tempo aplicado (mentoria)
+  final bool replay; // revisão: desafio já pontuado (tempo reduzido)
   final Map<String, dynamic> data;
 
   Challenge({
@@ -284,6 +357,8 @@ class Challenge {
     required this.theme,
     required this.difficulty,
     required this.baseTimeSeconds,
+    required this.bonusSeconds,
+    required this.replay,
     required this.data,
   });
 
@@ -295,6 +370,8 @@ class Challenge {
       theme: json['theme'] as String?,
       difficulty: json['difficulty'] as int,
       baseTimeSeconds: json['baseTimeSeconds'] as int,
+      bonusSeconds: (json['bonusSeconds'] as num?)?.toInt() ?? 0,
+      replay: json['replay'] as bool? ?? false,
       data: Map<String, dynamic>.from(json['data'] as Map),
     );
   }
@@ -325,6 +402,9 @@ class AttemptResult {
   final String area;
   final double xpAwarded;
   final double classScoreAwarded;
+  final double penalty; // anti-chute: pontos de influência perdidos
+  final bool guess; // detectado como chute
+  final int bonusUsed; // mentoria: segundos de bônus aplicados
 
   AttemptResult({
     required this.success,
@@ -333,6 +413,9 @@ class AttemptResult {
     required this.area,
     required this.xpAwarded,
     required this.classScoreAwarded,
+    required this.penalty,
+    required this.guess,
+    required this.bonusUsed,
   });
 
   factory AttemptResult.fromJson(Map<String, dynamic> json) {
@@ -343,6 +426,9 @@ class AttemptResult {
       area: json['area'] as String,
       xpAwarded: (json['xpAwarded'] as num? ?? 0).toDouble(),
       classScoreAwarded: (json['classScoreAwarded'] as num? ?? 0).toDouble(),
+      penalty: (json['penalty'] as num? ?? 0).toDouble(),
+      guess: json['guess'] as bool? ?? false,
+      bonusUsed: (json['bonusUsed'] as num? ?? 0).toInt(),
     );
   }
 }

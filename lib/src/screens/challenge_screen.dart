@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -15,14 +16,24 @@ class ChallengeScreen extends StatefulWidget {
     super.key,
     required this.api,
     this.territoryId,
-    this.area,
+    this.areas,
+    this.themes,
+    this.initialDifficulty = 1,
+    this.includeSolved = false,
     this.userLat,
     this.userLng,
   });
 
   final ApiClient api;
   final String? territoryId;
-  final String? area;
+
+  /// Áreas e temas escolhidos (vazio/null = todos). Nível inicial (null = qualquer).
+  final List<String>? areas;
+  final List<String>? themes;
+  final int? initialDifficulty;
+
+  /// Inclui desafios já pontuados (modo revisão: tempo reduzido em 50%).
+  final bool includeSolved;
 
   /// Localização do jogador, exigida para pontuar num território (regra de presença).
   final double? userLat;
@@ -34,10 +45,16 @@ class ChallengeScreen extends StatefulWidget {
 
 class _ChallengeScreenState extends State<ChallengeScreen> {
   late Future<Challenge> _future;
-  int _difficulty = 1;
+  int? _difficulty; // null = qualquer nível
   int _round = 0;
   bool _submitting = false;
   AttemptResult? _result;
+
+  // anti-chute (sessão): quantos chutes detectados e total de influência perdida
+  int _guessStrikes = 0;
+  double _penaltyTotal = 0;
+  bool _badgeExpanded = false; // quadro completo (some após 5s → só o ícone)
+  Timer? _badgeTimer;
 
   // estatísticas do header
   double _totalXp = 0;
@@ -51,12 +68,37 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
   @override
   void initState() {
     super.initState();
+    _difficulty = widget.initialDifficulty;
     _future = _fetch();
     _loadStats();
   }
 
-  Future<Challenge> _fetch() =>
-      widget.api.nextChallenge(area: widget.area, difficulty: _difficulty);
+  Future<Challenge> _fetch() => widget.api.nextChallenge(
+        areas: widget.areas,
+        difficulty: _difficulty,
+        themes: widget.themes,
+        includeSolved: widget.includeSolved,
+      );
+
+  @override
+  void dispose() {
+    _badgeTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Mostra o quadro completo do anti-chute e agenda o recolhimento (5s → só ícone).
+  void _expandBadge() {
+    setState(() => _badgeExpanded = true);
+    _badgeTimer?.cancel();
+    _badgeTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _badgeExpanded = false);
+    });
+  }
+
+  void _collapseBadge() {
+    _badgeTimer?.cancel();
+    setState(() => _badgeExpanded = false);
+  }
 
   Future<void> _loadStats() async {
     try {
@@ -112,7 +154,7 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
     });
   }
 
-  void _changeDifficulty(int d) {
+  void _changeDifficulty(int? d) {
     if (d == _difficulty) return;
     setState(() => _difficulty = d);
     _restart();
@@ -178,6 +220,37 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
                   ),
               ],
             ),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _changeDifficulty(null);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _difficulty == null
+                      ? AppColors.orange
+                      : AppColors.paperDark,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        _difficulty == null ? AppColors.orange : AppColors.line,
+                    width: 1.5,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'Qualquer nível',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color:
+                        _difficulty == null ? AppColors.white : AppColors.muted,
+                  ),
+                ),
+              ),
+            ),
           ],
           ),
         ),
@@ -197,17 +270,31 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
         userLng: widget.userLng,
       );
       if (!mounted) return;
+      final struck = result.guess || result.penalty > 0;
       setState(() {
         _result = result;
         _submitting = false;
         _totalXp += result.xpAwarded; // sobe na hora
+        // anti-chute: acumula strikes/penalidade da sessão
+        if (struck) {
+          _guessStrikes++;
+          _penaltyTotal += result.penalty;
+        }
       });
+      if (struck) _expandBadge(); // mostra o quadro completo por 5s
       _loadStats(); // reconcilia XP e atualiza o ranking
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      // falha de rede (ex.: conexão perdida) — destrava o botão p/ tentar de novo
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Falha de conexão. Toque em RESPONDER para tentar de novo.'),
+      ));
     }
   }
 
@@ -222,7 +309,7 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
             child: TextButton.icon(
               onPressed: _showLevelPicker,
               icon: const Icon(LucideIcons.gauge, size: 18),
-              label: Text('Nível $_difficulty',
+              label: Text(_difficulty == null ? 'Nível: todos' : 'Nível $_difficulty',
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
@@ -239,7 +326,16 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
             myInfluence: _myInf,
             aboveInfluence: _aboveInf,
             showRanking: widget.territoryId != null,
+            guessStrikes: _guessStrikes,
+            onTapGuess: _expandBadge,
           ),
+          // quadro completo só enquanto expandido (some após 5s → fica só o chip)
+          if (_guessStrikes > 0 && _badgeExpanded)
+            GestureDetector(
+              onTap: _collapseBadge,
+              child: _AntiGuessBadge(
+                  strikes: _guessStrikes, penaltyTotal: _penaltyTotal),
+            ),
           Expanded(
             child: FutureBuilder<Challenge>(
               future: _future,
@@ -282,6 +378,8 @@ class _StatsHeader extends StatelessWidget {
     required this.myInfluence,
     required this.aboveInfluence,
     required this.showRanking,
+    required this.guessStrikes,
+    required this.onTapGuess,
   });
 
   final double totalXp;
@@ -292,6 +390,8 @@ class _StatsHeader extends StatelessWidget {
   final double myInfluence;
   final double aboveInfluence;
   final bool showRanking;
+  final int guessStrikes; // anti-chute: nº de chutes na sessão (0 = oculto)
+  final VoidCallback onTapGuess;
 
   @override
   Widget build(BuildContext context) {
@@ -319,6 +419,34 @@ class _StatsHeader extends StatelessWidget {
                       const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                 ),
               ),
+              // anti-chute: ícone + "xN" ao lado do XP total
+              if (guessStrikes > 0) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onTapGuess,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.red,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.shieldAlert,
+                            size: 13, color: AppColors.white),
+                        const SizedBox(width: 3),
+                        Text('x$guessStrikes',
+                            style: const TextStyle(
+                                color: AppColors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               const Icon(LucideIcons.target, color: AppColors.green, size: 15),
               const SizedBox(width: 4),
@@ -336,7 +464,7 @@ class _StatsHeader extends StatelessWidget {
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))
             else if (hasTarget) ...[
               Text(
-                'Faltam ${gap.ceil()} de influência p/ ultrapassar $aboveName',
+                'Faltam ${gap.ceil()} de influência p/ ultrapassar 👤$aboveName',
                 style:
                     const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
@@ -358,6 +486,76 @@ class _StatsHeader extends StatelessWidget {
             ] else
               const Text('Jogue para entrar no ranking!',
                   style: TextStyle(fontSize: 11)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Badge completo de aviso anti-chute: aparece ao ser acionado e recolhe após
+/// 5s, deixando só o chip "xN" ao lado do XP (no header).
+class _AntiGuessBadge extends StatelessWidget {
+  const _AntiGuessBadge({required this.strikes, required this.penaltyTotal});
+
+  final int strikes;
+  final double penaltyTotal;
+
+  @override
+  Widget build(BuildContext context) {
+    final atRisk = strikes >= 2; // 2+ chutes = risco alto
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.red.withValues(alpha: atRisk ? 0.18 : 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: AppColors.red.withValues(alpha: atRisk ? 0.7 : 0.4),
+            width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.shieldAlert, size: 20, color: AppColors.red),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  atRisk
+                      ? 'EM RISCO — pare de chutar!'
+                      : 'Anti-chute ativado',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppColors.red),
+                ),
+                Text(
+                  penaltyTotal > 0
+                      ? 'Você já perdeu ${penaltyTotal.toStringAsFixed(0)} de influência. Responda com calma para parar de perder.'
+                      : 'Respostas rápidas e erradas penalizam sua influência.',
+                  style: const TextStyle(fontSize: 11, color: AppColors.ink),
+                ),
+              ],
+            ),
+          ),
+          if (strikes > 1) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.red,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('x$strikes',
+                  style: const TextStyle(
+                      color: AppColors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12)),
+            ),
           ],
         ],
       ),
@@ -419,6 +617,37 @@ class _ResultBanner extends StatelessWidget {
                     Text(
                       '+${result.classScoreAwarded.toStringAsFixed(0)} Pesquisador no território',
                       style: const TextStyle(fontSize: 12),
+                    ),
+                  if (result.penalty > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          const Icon(LucideIcons.triangleAlert,
+                              size: 14, color: AppColors.red),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Anti-chute: −${result.penalty.toStringAsFixed(0)} influência. Pare de chutar!',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (result.guess)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Evite chutar — respostas rápidas e erradas penalizam!',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.red),
+                      ),
                     ),
                 ],
               ),

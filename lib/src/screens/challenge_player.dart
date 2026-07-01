@@ -189,6 +189,13 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
                       color: AppColors.brown),
                   if (challenge.theme != null && challenge.theme!.isNotEmpty)
                     ComicTag(label: challenge.theme!, color: AppColors.orange),
+                  if (challenge.replay)
+                    const ComicTag(
+                        label: 'REVISÃO · ½ tempo', color: AppColors.red),
+                  if (challenge.bonusSeconds > 0)
+                    ComicTag(
+                        label: 'BÔNUS +${challenge.bonusSeconds}s',
+                        color: AppColors.green),
                 ],
               ),
             ),

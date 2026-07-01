@@ -6,7 +6,7 @@ import '../api_client.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/stat_tile.dart';
-import 'challenge_screen.dart';
+import 'challenge_setup_screen.dart';
 import 'player_profile_screen.dart';
 import 'tab_header.dart';
 import 'territory_customize_screen.dart';
@@ -22,6 +22,7 @@ class TerritoryTab extends StatefulWidget {
     this.userLat,
     this.userLng,
     this.onChanged,
+    this.onBackToCurrent,
   });
 
   final ApiClient api;
@@ -34,6 +35,10 @@ class TerritoryTab extends StatefulWidget {
 
   /// Chamado quando a zona é personalizada (para o mapa atualizar).
   final VoidCallback? onChanged;
+
+  /// Quando definido, exibe um botão de voltar para a zona atual do jogador
+  /// (visível ao visualizar outro território fora da sua localização).
+  final VoidCallback? onBackToCurrent;
 
   @override
   State<TerritoryTab> createState() => _TerritoryTabState();
@@ -80,7 +85,7 @@ class _TerritoryTabState extends State<TerritoryTab> {
   void _startChallenge() {
     Navigator.of(context)
         .push(MaterialPageRoute(
-          builder: (_) => ChallengeScreen(
+          builder: (_) => ChallengeSetupScreen(
             api: widget.api,
             territoryId: widget.territoryId,
             userLat: widget.userLat,
@@ -96,8 +101,153 @@ class _TerritoryTabState extends State<TerritoryTab> {
         api: widget.api,
         userId: e.userId,
         initialName: e.name,
+        territoryId: widget.territoryId,
+        territoryName: _detail?.displayName,
       ),
     ));
+  }
+
+  /// Abre o diálogo de envio de bônus de tempo (mentoria) para um jogador,
+  /// mostrando o XP do doador e do receptor na área (regra: só pode doar para
+  /// quem tem MENOS XP que você na mesma área).
+  Future<void> _sendBonus(RankingEntry e) async {
+    Me me;
+    PublicProfile profile;
+    try {
+      me = await widget.api.me();
+      profile = await widget.api.getPlayer(e.userId);
+    } catch (_) {
+      _snack('Falha ao carregar os dados.');
+      return;
+    }
+    final donorXp = {for (final x in me.knowledgeXp) x.area: x.xp};
+    final recvXp = {for (final x in profile.knowledgeXp) x.area: x.xp};
+    final areas = donorXp.entries
+        .where((x) => x.value > 0)
+        .map((x) => x.key)
+        .toList()
+      ..sort((a, b) => (_areaLabels[a] ?? a).compareTo(_areaLabels[b] ?? b));
+    if (areas.isEmpty) {
+      _snack('Você precisa de XP em alguma área para doar bônus.');
+      return;
+    }
+    if (!mounted) return;
+
+    String area = areas.first;
+    int seconds = 5;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final myX = donorXp[area] ?? 0;
+          final rX = recvXp[area] ?? 0;
+          final allowed = myX > 0 && rX < myX;
+          return AlertDialog(
+            title: Text('Bônus de tempo p/ ${e.name}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Área:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in areas)
+                      ChoiceChip(
+                        label: Text(_areaLabels[a] ?? a),
+                        selected: area == a,
+                        onSelected: (_) => setS(() => area = a),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // XP comparativo + permissão
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (allowed ? AppColors.green : AppColors.red)
+                        .withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Seu XP em ${_areaLabels[area] ?? area}: ${myX.round()}',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text('XP de ${e.name}: ${rX.round()}',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                              allowed
+                                  ? LucideIcons.circleCheck
+                                  : LucideIcons.circleX,
+                              size: 16,
+                              color:
+                                  allowed ? AppColors.green : AppColors.red),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              allowed
+                                  ? 'Você pode enviar bônus nesta área.'
+                                  : 'Jogador tem XP maior ou igual o seu.',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: allowed
+                                      ? AppColors.green
+                                      : AppColors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Bônus: +$seconds s',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Slider(
+                  value: seconds.toDouble(),
+                  min: 1,
+                  max: 10,
+                  divisions: 9,
+                  label: '+$seconds s',
+                  onChanged: (v) => setS(() => seconds = v.round()),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancelar')),
+              FilledButton(
+                  onPressed: allowed ? () => Navigator.pop(ctx, true) : null,
+                  child: const Text('Enviar')),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await widget.api.sendBonus(e.userId, area, seconds);
+      _snack('Bônus de +$seconds s enviado para ${e.name}!');
+    } on ApiException catch (err) {
+      _snack(err.message);
+    } catch (_) {
+      _snack('Falha ao enviar o bônus.');
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _customize(TerritoryDetail detail) {
@@ -122,6 +272,7 @@ class _TerritoryTabState extends State<TerritoryTab> {
           children: [
             TabHeader(
               title: 'TERRITÓRIO',
+              onBack: widget.onBackToCurrent,
               onRefresh: widget.territoryId == null ? null : _reload,
             ),
             Expanded(child: _buildContent()),
@@ -288,6 +439,9 @@ class _TerritoryTabState extends State<TerritoryTab> {
                             isGovernor: e.userId == d.governorUserId,
                             isMe: e.userId == myId,
                             onTap: () => _openPlayer(e),
+                            onSendBonus: e.userId == myId
+                                ? null
+                                : () => _sendBonus(e),
                           ),
                         ),
                   ],
@@ -295,6 +449,19 @@ class _TerritoryTabState extends State<TerritoryTab> {
     );
   }
 }
+
+const _areaLabels = <String, String>{
+  'MATEMATICA': 'Matemática',
+  'LOGICA': 'Lógica',
+  'MEMORIA': 'Memória',
+  'BIOLOGIA': 'Biologia',
+  'HISTORIA': 'História',
+  'PORTUGUES': 'Português',
+  'GEOGRAFIA': 'Geografia',
+  'CIENCIAS': 'Ciências',
+  'ESTRATEGIA': 'Estratégia',
+  'OBSERVACAO': 'Observação',
+};
 
 const _classLabels = <String, String>{
   'CONQUISTADOR': 'Conquistador',
@@ -312,12 +479,14 @@ class _PlayerRow extends StatelessWidget {
     required this.isGovernor,
     required this.isMe,
     required this.onTap,
+    this.onSendBonus,
   });
 
   final RankingEntry entry;
   final bool isGovernor;
   final bool isMe;
   final VoidCallback onTap;
+  final VoidCallback? onSendBonus;
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +594,15 @@ class _PlayerRow extends StatelessWidget {
                 ),
               ],
             ),
+            if (onSendBonus != null) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Enviar bônus de tempo',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(LucideIcons.timer, color: AppColors.orange),
+                onPressed: onSendBonus,
+              ),
+            ],
           ],
         ),
       ),

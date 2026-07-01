@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
+import '../image_compress.dart';
 import '../models.dart';
 import '../theme.dart';
 
@@ -47,7 +48,8 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
       );
       if (picked == null) return;
       setState(() => _uploadingBg = true);
-      final bytes = await picked.readAsBytes();
+      final raw = await picked.readAsBytes();
+      final bytes = await compressImageUnder1MB(raw); // garante < 1 MB
       final url = await widget.api.uploadImage(bytes, picked.name);
       if (!mounted) return;
       setState(() {
@@ -60,91 +62,6 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Falha no upload: $e')));
     }
-  }
-
-  static const _classLabels = {
-    'CONQUISTADOR': 'Conquistador',
-    'PESQUISADOR': 'Pesquisador',
-    'MENTOR': 'Mentor',
-    'EXPLORADOR': 'Explorador',
-    'GUARDIAO': 'Guardião',
-    'RECRUTADOR': 'Recrutador',
-  };
-
-  /// Monta um card por jogador com sua influência e os scores por classe.
-  List<Widget> _playerCards() {
-    final d = widget.detail;
-    if (d.generalRanking.isEmpty) {
-      return [
-        const ComicPanel(
-          child: Text('Nenhum jogador pontuou neste território ainda.'),
-        ),
-      ];
-    }
-
-    // classes por jogador: userId -> {classType: score}
-    final classesByUser = <String, Map<String, double>>{};
-    d.rankingByClass.forEach((classType, entries) {
-      for (final e in entries) {
-        (classesByUser[e.userId] ??= {})[classType] = e.score;
-      }
-    });
-
-    return d.generalRanking.map((p) {
-      final classes = classesByUser[p.userId] ?? const {};
-      final isGov = p.userId == d.governorUserId;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: ComicPanel(
-          color: isGov ? AppColors.orange : AppColors.white,
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 13,
-                    backgroundColor: AppColors.ink,
-                    child: Text('${p.position}',
-                        style: const TextStyle(
-                            color: AppColors.paper,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11)),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(p.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                  if (isGov) const Padding(
-                    padding: EdgeInsets.only(right: 6),
-                    child: Text('👑'),
-                  ),
-                  Text('${p.effectiveInfluence.toStringAsFixed(0)} inf.',
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                ],
-              ),
-              if (classes.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: classes.entries.map((c) {
-                    final label =
-                        '${_classLabels[c.key] ?? c.key} ${c.value.toStringAsFixed(0)}';
-                    return ComicTag(
-                      label: label,
-                      color: AppColors.classColors[c.key] ?? AppColors.brown,
-                    );
-                  }).toList(),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    }).toList();
   }
 
   Future<void> _save() async {
@@ -269,9 +186,6 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          const _Label('JOGADORES NO TERRITÓRIO'),
-          ..._playerCards(),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _saving ? null : _save,
