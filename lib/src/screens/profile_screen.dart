@@ -10,6 +10,19 @@ import '../widgets/stat_tile.dart';
 import 'settings_screen.dart';
 import 'tab_header.dart';
 
+const _areaLabels = <String, String>{
+  'MATEMATICA': 'Matemática',
+  'LOGICA': 'Lógica',
+  'MEMORIA': 'Memória',
+  'BIOLOGIA': 'Biologia',
+  'HISTORIA': 'História',
+  'PORTUGUES': 'Português',
+  'GEOGRAFIA': 'Geografia',
+  'CIENCIAS': 'Ciências',
+  'ESTRATEGIA': 'Estratégia',
+  'OBSERVACAO': 'Observação',
+};
+
 /// Aba Perfil: avatar, stats gerais (XP total, acerto, tentativas, territórios),
 /// lista de territórios em que participa e XP por área. Ícone de config no topo.
 class ProfileScreen extends StatefulWidget {
@@ -89,15 +102,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showSourceSheet() {
+    final zon = context.zon;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.paper,
+      backgroundColor: zon.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Corners.xl)),
+      ),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: Space.sm),
             ListTile(
-              leading: const Icon(Icons.photo_camera, color: AppColors.ink),
+              leading: Icon(LucideIcons.camera, color: zon.onSurface),
               title: const Text('Câmera'),
               onTap: () {
                 Navigator.pop(context);
@@ -105,7 +123,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library, color: AppColors.ink),
+              leading: Icon(LucideIcons.image, color: zon.onSurface),
               title: const Text('Galeria'),
               onTap: () {
                 Navigator.pop(context);
@@ -139,11 +157,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             TabHeader(
               title: 'PERFIL',
               actions: [
-                IconButton(
-                  onPressed: _me == null ? null : _openSettings,
-                  icon: const Icon(LucideIcons.settings,
-                      color: AppColors.muted, size: 22),
+                HeaderIconButton(
+                  icon: LucideIcons.settings,
+                  onTap: _me == null ? null : _openSettings,
                   tooltip: 'Configurações',
+                  muted: true,
                 ),
               ],
             ),
@@ -155,239 +173,304 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildContent() {
+    final zon = context.zon;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: _load, child: const Text('Tentar de novo')),
-          ],
+      return EmptyState(
+        icon: LucideIcons.cloudOff,
+        color: zon.danger,
+        title: 'Ops, algo deu errado',
+        message: _error,
+        action: GameButton(
+          label: 'TENTAR DE NOVO',
+          icon: LucideIcons.refreshCw,
+          onPressed: _load,
         ),
       );
     }
 
     final me = _me!;
     final maxXp = me.knowledgeXp.fold<double>(1, (m, e) => e.xp > m ? e.xp : m);
-    final hasPhoto = me.avatarUrl != null && me.avatarUrl!.isNotEmpty;
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      color: AppColors.orange,
+      color: zon.brand,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      children: [
-        // cabeçalho com avatar
-        ComicPanel(
-          color: AppColors.orange,
-          child: Row(
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: AppColors.ink,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.ink, width: 3),
-                      image: hasPhoto
-                          ? DecorationImage(
-                              image: NetworkImage(me.avatarUrl!),
-                              fit: BoxFit.cover)
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: _uploading
-                        ? const CircularProgressIndicator(
-                            color: AppColors.paper, strokeWidth: 2)
-                        : (hasPhoto
-                            ? null
-                            : Text(
-                                me.displayName.isNotEmpty
-                                    ? me.displayName[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(
-                                    color: AppColors.paper,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 28),
-                              )),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: GestureDetector(
-                      onTap: _uploading ? null : _showSourceSheet,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.ink, width: 2),
-                        ),
-                        child: const Icon(LucideIcons.pencil,
-                            size: 13, color: AppColors.ink),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          _headerBand(me),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // stats gerais
+                Row(
                   children: [
-                    Text(me.displayName,
-                        style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink)),
-                    if (me.nickname != null && me.nickname!.isNotEmpty)
-                      Text(me.name,
-                          style: const TextStyle(
-                              color: AppColors.muted, fontSize: 12)),
-                    Text(me.email,
-                        style: const TextStyle(
-                            color: AppColors.ink, fontSize: 13)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        // stats gerais
-        Row(
-          children: [
-            Expanded(
-                child: StatTile(
-                    icon: LucideIcons.zap,
-                    label: 'XP TOTAL',
-                    value: me.totalXp.toStringAsFixed(0),
-                    color: AppColors.orange)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: StatTile(
-                    icon: LucideIcons.target,
-                    label: 'ACERTO',
-                    value: me.totalAttempts == 0
-                        ? '—'
-                        : '${me.accuracy.round()}%',
-                    color: AppColors.green)),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-                child: StatTile(
-                    icon: LucideIcons.activity,
-                    label: 'TENTATIVAS',
-                    value: '${me.totalAttempts}',
-                    color: AppColors.blue)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: StatTile(
-                    icon: LucideIcons.hexagon,
-                    label: 'TERRITÓRIOS',
-                    value: '${me.territories.length}',
-                    color: AppColors.brown)),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const _SectionTitle('MEUS TERRITÓRIOS'),
-        if (me.territories.isEmpty)
-          const ComicPanel(
-            child: Text('Você ainda não participa de nenhum território. '
-                'Jogue desafios numa zona para ganhar influência!'),
-          )
-        else
-          ...me.territories.map(
-            (t) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ComicPanel(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(t.isGovernor ? LucideIcons.crown : LucideIcons.hexagon,
-                        size: 20,
-                        color: t.isGovernor ? AppColors.red : AppColors.brown),
+                    Expanded(
+                        child: StatTile(
+                            icon: LucideIcons.zap,
+                            label: 'XP TOTAL',
+                            value: me.totalXp.toStringAsFixed(0),
+                            color: zon.xp)),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(t.displayName,
-                          style: const TextStyle(fontWeight: FontWeight.w800)),
-                    ),
-                    if (t.isGovernor)
-                      const Padding(
-                          padding: EdgeInsets.only(right: 6), child: Text('👑')),
-                    Text('${t.effectiveInfluence.toStringAsFixed(0)} inf.',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                        child: StatTile(
+                            icon: LucideIcons.target,
+                            label: 'ACERTO',
+                            value: me.totalAttempts == 0
+                                ? '—'
+                                : '${me.accuracy.round()}%',
+                            color: zon.success)),
                   ],
                 ),
-              ),
-            ),
-          ),
-        const SizedBox(height: 20),
-        const _SectionTitle('XP POR ÁREA'),
-        if (me.knowledgeXp.isEmpty)
-          const ComicPanel(
-            child: Text('Você ainda não ganhou XP. Resolva desafios para evoluir!'),
-          )
-        else
-          ...me.knowledgeXp.map(
-            (xp) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ComicPanel(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(xp.area,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                        Text('${xp.xp.toStringAsFixed(0)} XP',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: (xp.xp / maxXp).clamp(0.0, 1.0),
-                        minHeight: 8,
-                        backgroundColor: AppColors.paperDark,
-                        color: AppColors.blue,
-                      ),
-                    ),
+                    Expanded(
+                        child: StatTile(
+                            icon: LucideIcons.activity,
+                            label: 'TENTATIVAS',
+                            value: '${me.totalAttempts}',
+                            color: zon.info)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: StatTile(
+                            icon: LucideIcons.hexagon,
+                            label: 'TERRITÓRIOS',
+                            value: '${me.territories.length}',
+                            color: zon.territory)),
                   ],
                 ),
-              ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SectionHeader(
+                      icon: LucideIcons.hexagon,
+                      title: 'Meus territórios',
+                      color: zon.territory),
+                ),
+                if (me.territories.isEmpty)
+                  GamePanel(
+                    child: Text(
+                      'Você ainda não participa de nenhum território. '
+                      'Jogue desafios numa zona para ganhar influência!',
+                      style: AppText.body.copyWith(color: zon.onSurfaceMuted),
+                    ),
+                  )
+                else
+                  ...me.territories.map((t) => _territoryRow(t)),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SectionHeader(
+                      icon: LucideIcons.zap,
+                      title: 'XP por área',
+                      color: zon.xp),
+                ),
+                if (me.knowledgeXp.isEmpty)
+                  GamePanel(
+                    child: Text(
+                      'Você ainda não ganhou XP. Resolva desafios para evoluir!',
+                      style: AppText.body.copyWith(color: zon.onSurfaceMuted),
+                    ),
+                  )
+                else
+                  ...me.knowledgeXp.map((xp) => _xpRow(xp, maxXp)),
+              ],
             ),
           ),
-      ],
+        ],
       ),
     );
   }
-}
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10, top: 2),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-                color: AppColors.ink)),
-      );
+  /// Faixa laranja curvada do topo: avatar grande + nome + e-mail.
+  Widget _headerBand(Me me) {
+    final zon = context.zon;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      decoration: BoxDecoration(
+        color: zon.brand,
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            width: 96,
+            height: 96,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                AvatarRing(
+                  imageUrl: me.avatarUrl,
+                  initial:
+                      me.displayName.isNotEmpty ? me.displayName[0] : '?',
+                  size: 88,
+                  ringColor: zon.surface,
+                ),
+                if (_uploading)
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: CircularProgressIndicator(
+                        color: zon.onBrand, strokeWidth: 2.5),
+                  ),
+                // botão de trocar a foto sobreposto ao avatar
+                Positioned(
+                  right: 0,
+                  bottom: 2,
+                  child: GestureDetector(
+                    onTap: _uploading ? null : _showSourceSheet,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: zon.brand,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: zon.surface, width: 2),
+                        boxShadow: const [Shadows.soft],
+                      ),
+                      child: Icon(LucideIcons.camera,
+                          size: 14, color: zon.onBrand),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.md),
+          Text(
+            me.displayName,
+            textAlign: TextAlign.center,
+            style: AppText.headline.copyWith(color: zon.onBrand),
+          ),
+          if (me.nickname != null && me.nickname!.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              me.name,
+              textAlign: TextAlign.center,
+              style: AppText.caption
+                  .copyWith(color: zon.onBrand.withValues(alpha: 0.75)),
+            ),
+          ],
+          const SizedBox(height: 2),
+          Text(
+            me.email,
+            textAlign: TextAlign.center,
+            style: AppText.caption
+                .copyWith(color: zon.onBrand.withValues(alpha: 0.75)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Linha de território: ícone tintado + nome + coroa (se governa) + influência.
+  Widget _territoryRow(TerritoryParticipation t) {
+    final zon = context.zon;
+    final accent = t.isGovernor ? zon.brand : zon.territory;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GamePanel(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                t.isGovernor ? LucideIcons.crown : LucideIcons.hexagon,
+                size: 16,
+                color: accent,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(t.displayName, style: AppText.bodyStrong)),
+            if (t.isGovernor)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: zon.brand,
+                    borderRadius: BorderRadius.circular(Corners.pill),
+                  ),
+                  child:
+                      Icon(LucideIcons.crown, size: 11, color: zon.onBrand),
+                ),
+              ),
+            Text('${t.effectiveInfluence.toStringAsFixed(0)} inf.',
+                style: AppText.numeric.copyWith(fontSize: 15)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Linha de XP por área: ícone da área + barra de progresso + contador.
+  Widget _xpRow(KnowledgeXp xp, double maxXp) {
+    final accent = areaColor(xp.area);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GamePanel(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(areaIcon(xp.area), size: 16, color: accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_areaLabels[xp.area] ?? xp.area,
+                          style: AppText.bodyStrong),
+                      XpCounter(
+                        value: xp.xp.round(),
+                        suffix: ' XP',
+                        style: AppText.numeric
+                            .copyWith(fontSize: 15, color: accent),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  GameProgressBar(
+                    value: (xp.xp / maxXp).clamp(0.0, 1.0),
+                    color: accent,
+                    height: 10,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

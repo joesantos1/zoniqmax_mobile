@@ -86,6 +86,7 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     return Scaffold(
       appBar: AppBar(title: const Text('PERSONALIZAR TERRITÓRIO')),
       body: ListView(
@@ -104,20 +105,10 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
             runSpacing: 10,
             children: [
               for (final entry in AppColors.zonePalette.entries)
-                GestureDetector(
+                _ColorSwatch(
+                  color: entry.value,
+                  selected: _color == entry.key,
                   onTap: () => setState(() => _color = entry.key),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: entry.value,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppColors.ink,
-                        width: _color == entry.key ? 5 : 2,
-                      ),
-                    ),
-                  ),
                 ),
             ],
           ),
@@ -128,31 +119,16 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
             runSpacing: 10,
             children: [
               for (final entry in kZoneIcons.entries)
-                GestureDetector(
+                _IconSwatch(
+                  icon: entry.value,
+                  selected: _icon == entry.key,
                   onTap: () => setState(() => _icon = entry.key),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: _icon == entry.key
-                          ? AppColors.orange
-                          : AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _icon == entry.key
-                            ? AppColors.orange
-                            : AppColors.line,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Icon(entry.value, color: AppColors.ink),
-                  ),
                 ),
             ],
           ),
           const SizedBox(height: 16),
           const _Label('IMAGEM DE FUNDO'),
-          ComicPanel(
+          GamePanel(
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
@@ -166,38 +142,109 @@ class _TerritoryCustomizeScreenState extends State<TerritoryCustomizeScreen> {
                   Container(
                     height: 80,
                     alignment: Alignment.center,
-                    child: const Text('Sem imagem de fundo'),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.image,
+                            size: 24, color: zon.onSurfaceMuted),
+                        const SizedBox(height: 6),
+                        Text('Sem imagem de fundo ainda',
+                            style: AppText.caption
+                                .copyWith(color: zon.onSurfaceMuted)),
+                      ],
+                    ),
                   ),
                 const SizedBox(height: 10),
-                OutlinedButton.icon(
+                GameButton(
+                  label: 'ESCOLHER IMAGEM',
+                  icon: LucideIcons.image,
+                  variant: GameButtonVariant.secondary,
+                  size: GameButtonSize.sm,
+                  loading: _uploadingBg,
                   onPressed: _uploadingBg ? null : _pickBackground,
-                  icon: _uploadingBg
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(LucideIcons.image, size: 18),
-                  label: const Text('Escolher imagem'),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.ink, width: 2),
-                    foregroundColor: AppColors.ink,
-                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 24),
-          FilledButton(
+          GameButton(
+            label: 'SALVAR',
+            icon: LucideIcons.check,
+            expanded: true,
+            loading: _saving,
             onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppColors.ink))
-                : const Text('SALVAR'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Swatch de cor da zona: quadrado "chunky" pressionável; selecionado mostra
+/// um check branco e borda mais grossa.
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    return GamePressable(
+      onTap: onTap,
+      faceColor: color,
+      borderColor: selected ? zon.surface : Color.lerp(color, Colors.black, 0.15)!,
+      edgeColor: Color.lerp(color, Colors.black, 0.25)!,
+      borderWidth: selected ? 3 : 2,
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: selected
+            ? Icon(LucideIcons.check, size: 22, color: zon.onBrand)
+            : null,
+      ),
+    );
+  }
+}
+
+/// Swatch de ícone da zona: quadrado "chunky"; selecionado ganha tinta e
+/// borda da marca.
+class _IconSwatch extends StatelessWidget {
+  const _IconSwatch({
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    return GamePressable(
+      onTap: onTap,
+      faceColor: selected
+          ? Color.alphaBlend(zon.brand.withValues(alpha: 0.12), zon.surface)
+          : zon.surface,
+      borderColor: selected ? zon.brand : zon.outline,
+      edgeColor: selected
+          ? Color.lerp(zon.brand, Colors.black, 0.25)!
+          : zon.neutralEdge,
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Icon(icon,
+            size: 22, color: selected ? zon.brand : zon.onSurface),
       ),
     );
   }
@@ -210,7 +257,7 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 4),
         child: Text(text,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+            style: AppText.label
+                .copyWith(color: context.zon.onSurfaceMuted)),
       );
 }

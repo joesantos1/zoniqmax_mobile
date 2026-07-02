@@ -70,11 +70,13 @@ class _AssociationGameState extends State<AssociationGame>
 
   void _tapLeft(String id) {
     if (widget.locked) return;
+    GameHaptics.tap();
     setState(() => _selectedLeft = (_selectedLeft == id) ? null : id);
   }
 
   void _tapRight(String rightId) {
     if (widget.locked || _selectedLeft == null) return;
+    GameHaptics.correct();
     setState(() {
       // mantém o lado direito único: remove ligação que já aponte para ele
       _connections.removeWhere((l, r) => r == rightId);
@@ -132,19 +134,21 @@ class _AssociationGameState extends State<AssociationGame>
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: AnimatedBuilder(
-                        animation: _anim,
-                        builder: (context, _) => CustomPaint(
-                          painter: _LinesPainter(
-                            connections: _connections,
-                            leftIndex: (id) => _indexOf(_left, id),
-                            rightIndex: (id) => _indexOf(_right, id),
-                            colorOf: _connColor,
-                            rowH: rowH,
-                            gap: _gap,
-                            colW: colW,
-                            width: w,
-                            progress: _anim.value,
+                      child: RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: _anim,
+                          builder: (context, _) => CustomPaint(
+                            painter: _LinesPainter(
+                              connections: _connections,
+                              leftIndex: (id) => _indexOf(_left, id),
+                              rightIndex: (id) => _indexOf(_right, id),
+                              colorOf: _connColor,
+                              rowH: rowH,
+                              gap: _gap,
+                              colW: colW,
+                              width: w,
+                              progress: _anim.value,
+                            ),
                           ),
                         ),
                       ),
@@ -226,13 +230,17 @@ class _AssociationGameState extends State<AssociationGame>
     required VoidCallback onTap,
     required bool dotRight,
   }) {
+    final zon = context.zon;
+    final accent = selected ? zon.brand : (connected ? color : null);
     final dot = Container(
       width: 14,
       height: 14,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: connected ? (color ?? AppColors.ink) : AppColors.white,
-        border: Border.all(color: AppColors.line, width: 1.5),
+        color: connected ? (color ?? zon.onSurface) : zon.surface,
+        border: Border.all(
+            color: connected ? (color ?? zon.onSurface) : zon.outline,
+            width: 1.5),
       ),
     );
     return Container(
@@ -244,9 +252,25 @@ class _AssociationGameState extends State<AssociationGame>
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: selected ? AppColors.orange : AppColors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.line, width: 1.5),
+            color: accent != null
+                ? Color.alphaBlend(
+                    accent.withValues(alpha: selected ? 0.16 : 0.10),
+                    zon.surface)
+                : zon.surface,
+            borderRadius: BorderRadius.circular(Corners.md),
+            border: Border.all(
+              color: accent ?? zon.outline,
+              width: accent != null ? 2 : 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent != null
+                    ? Color.lerp(accent, const Color(0xFF000000), 0.25)!
+                    : zon.neutralEdge,
+                offset: const Offset(0, 2),
+                blurRadius: 0,
+              ),
+            ],
           ),
           child: Row(
             children: [

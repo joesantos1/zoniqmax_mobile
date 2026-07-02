@@ -16,7 +16,7 @@ class HexBackgroundLayer extends StatefulWidget {
   const HexBackgroundLayer({
     super.key,
     required this.territories,
-    this.opacity = 0.2,
+    this.opacity = 0.4,
   });
 
   final List<MapTerritory> territories;

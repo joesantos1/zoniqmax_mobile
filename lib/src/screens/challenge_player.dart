@@ -4,10 +4,16 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models.dart';
 import '../theme.dart';
+import 'games/anagram_game.dart';
 import 'games/association_game.dart';
+import 'games/balance_game.dart';
+import 'games/decision_game.dart';
 import 'games/memory_game.dart';
 import 'games/ordering_game.dart';
+import 'games/precision_game.dart';
 import 'games/puzzle_game.dart';
+import 'games/true_false_game.dart';
+import 'games/word_search_game.dart';
 
 /// Widget que "joga" um desafio: enunciado, coleta da resposta e cronômetro.
 /// O botão de ação fica FIXO no rodapé (grande, fácil de tocar):
@@ -37,6 +43,13 @@ class ChallengePlayer extends StatefulWidget {
 }
 
 class _ChallengePlayerState extends State<ChallengePlayer> {
+  /// Tipos de resposta numérica: usam o GameNumpad em vez do teclado do sistema.
+  static const _numpadTypes = {
+    'CALCULO_MENTAL',
+    'SEQUENCIA_LOGICA',
+    'BALANCA_LOGICA',
+  };
+
   Timer? _timer;
   late int _secondsLeft;
   int? _selectedOption;
@@ -53,6 +66,10 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _secondsLeft--);
+      // tique tátil nos últimos 5 segundos (sem alterar a lógica de tempo)
+      if (!_submitted && _secondsLeft > 0 && _secondsLeft <= 5) {
+        GameHaptics.tick();
+      }
       if (_secondsLeft <= 0) _submit(timedOut: true);
     });
   }
@@ -69,12 +86,18 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
   Object _gatherAnswer() {
     switch (widget.challenge.type) {
       case 'MEMORIA_VISUAL':
-        return _answer.value ?? <dynamic>[];
       case 'ORDENACAO_RAPIDA':
+      case 'REACAO_PRECISAO':
+      case 'VERDADEIRO_FALSO':
+      case 'CACA_PALAVRAS':
         return _answer.value ?? <dynamic>[];
       case 'ASSOCIACAO_VISUAL':
       case 'MINI_PUZZLE':
         return _answer.value ?? <String, String>{};
+      case 'TOMADA_DECISAO':
+        return _answer.value ?? -1;
+      case 'ANAGRAMA':
+        return _answer.value ?? '';
       default:
         final options = widget.challenge.options;
         if (options != null) return _selectedOption ?? -1;
@@ -115,7 +138,15 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
   bool get _fillsViewport =>
       widget.challenge.type == 'MEMORIA_VISUAL' ||
       widget.challenge.type == 'MINI_PUZZLE' ||
-      widget.challenge.type == 'ASSOCIACAO_VISUAL';
+      widget.challenge.type == 'ASSOCIACAO_VISUAL' ||
+      widget.challenge.type == 'VERDADEIRO_FALSO' ||
+      widget.challenge.type == 'CACA_PALAVRAS';
+
+  /// Tipos cujo widget de jogo renderiza o próprio enunciado estilizado
+  /// (o painel `_prompt()` padrão é pulado).
+  bool get _rendersOwnPrompt =>
+      widget.challenge.type == 'TOMADA_DECISAO' ||
+      widget.challenge.type == 'ANAGRAMA';
 
   @override
   Widget build(BuildContext context) {
@@ -155,8 +186,10 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
                 ] else
                   _timerHeader(),
                 const SizedBox(height: 16),
-                _prompt(),
-                const SizedBox(height: 20),
+                if (!_rendersOwnPrompt) ...[
+                  _prompt(),
+                  const SizedBox(height: 20),
+                ],
                 _answerArea(answered),
               ],
             ),
@@ -169,67 +202,57 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
 
   Widget _timerHeader() {
     final challenge = widget.challenge;
-    final total = challenge.baseTimeSeconds;
-    final progress = total == 0 ? 0.0 : (_secondsLeft / total).clamp(0.0, 1.0);
-    final lowTime = _secondsLeft <= 5;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  ComicTag(label: challenge.area, color: AppColors.blue),
-                  ComicTag(
-                      label: 'NÍVEL ${challenge.difficulty}',
-                      color: AppColors.brown),
-                  if (challenge.theme != null && challenge.theme!.isNotEmpty)
-                    ComicTag(label: challenge.theme!, color: AppColors.orange),
-                  if (challenge.replay)
-                    const ComicTag(
-                        label: 'REVISÃO · ½ tempo', color: AppColors.red),
-                  if (challenge.bonusSeconds > 0)
-                    ComicTag(
-                        label: 'BÔNUS +${challenge.bonusSeconds}s',
-                        color: AppColors.green),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${_secondsLeft < 0 ? 0 : _secondsLeft}s',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 22,
-                color: lowTime ? AppColors.red : AppColors.ink,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 10,
-            backgroundColor: AppColors.paperDark,
-            color: lowTime ? AppColors.red : AppColors.orange,
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              GameChip(
+                  label: challenge.area,
+                  color: areaColor(challenge.area),
+                  icon: areaIcon(challenge.area),
+                  mode: GameChipMode.tonal),
+              GameChip(
+                  label: 'NÍVEL ${challenge.difficulty}',
+                  color: AppColors.brown,
+                  mode: GameChipMode.tonal),
+              if (challenge.theme != null && challenge.theme!.isNotEmpty)
+                GameChip(
+                    label: challenge.theme!,
+                    color: AppColors.orange,
+                    mode: GameChipMode.tonal),
+              if (challenge.replay)
+                const GameChip(
+                    label: 'REVISÃO · ½ tempo',
+                    color: AppColors.red,
+                    icon: LucideIcons.repeat),
+              if (challenge.bonusSeconds > 0)
+                GameChip(
+                    label: 'BÔNUS +${challenge.bonusSeconds}s',
+                    color: AppColors.green,
+                    icon: LucideIcons.gift),
+            ],
           ),
+        ),
+        const SizedBox(width: 10),
+        TimerRing(
+          totalSeconds: challenge.baseTimeSeconds,
+          secondsLeft: _secondsLeft,
+          running: !_submitted && !widget.answered && !widget.submitting,
         ),
       ],
     );
   }
 
   Widget _prompt() {
-    return ComicPanel(
-      color: AppColors.paper,
+    return GamePanel(
       child: Text(
         widget.challenge.prompt,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        style: AppText.headline.copyWith(fontSize: 21),
       ),
     );
   }
@@ -265,33 +288,95 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
           answer: _answer,
           locked: locked,
         );
+      case 'REACAO_PRECISAO':
+        return PrecisionGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+        );
+      case 'VERDADEIRO_FALSO':
+        return TrueFalseGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+          onComplete: () {
+            if (!_submitted) _submit();
+          },
+        );
+      case 'CACA_PALAVRAS':
+        return WordSearchGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+          onComplete: () {
+            if (!_submitted) _submit();
+          },
+        );
+      case 'ANAGRAMA':
+        return AnagramGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+        );
+      case 'TOMADA_DECISAO':
+        return DecisionGame(
+          challenge: widget.challenge,
+          answer: _answer,
+          locked: locked,
+        );
+      case 'BALANCA_LOGICA':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BalanceBoard(challenge: widget.challenge),
+            const SizedBox(height: 8),
+            _numericAnswerArea(locked),
+          ],
+        );
     }
 
     final options = widget.challenge.options;
     if (options != null) {
+      final zon = context.zon;
+      const letters = 'ABCDEFGH';
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: List.generate(options.length, (i) {
           final selected = _selectedOption == i;
           return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: ComicPanel(
-              color: selected ? AppColors.orange : AppColors.white,
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GamePressable(
               onTap: locked ? null : () => setState(() => _selectedOption = i),
+              faceColor: selected
+                  ? Color.alphaBlend(
+                      zon.brand.withValues(alpha: 0.12), zon.surface)
+                  : zon.surface,
+              borderColor: selected ? zon.brand : zon.outline,
+              edgeColor: selected ? zon.brandEdge : zon.neutralEdge,
+              borderWidth: selected ? 2.5 : 2,
               child: Row(
                 children: [
-                  Icon(
-                    selected
-                        ? LucideIcons.circleDot
-                        : LucideIcons.circle,
-                    color: AppColors.ink,
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: selected ? zon.brand : zon.surfaceAlt,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      i < letters.length ? letters[i] : '${i + 1}',
+                      style: AppText.label.copyWith(
+                        color:
+                            selected ? zon.onBrand : zon.onSurfaceMuted,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       options[i],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16),
+                      style: AppText.bodyStrong.copyWith(fontSize: 16),
                     ),
                   ),
                 ],
@@ -301,11 +386,14 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
         }),
       );
     }
+    if (_numpadTypes.contains(widget.challenge.type)) {
+      return _numericAnswerArea(locked);
+    }
     return TextField(
       controller: _textCtrl,
       enabled: !locked,
       autofocus: true,
-      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      style: AppText.bodyStrong.copyWith(fontSize: 18),
       decoration: const InputDecoration(
         labelText: 'Sua resposta',
         hintText: 'Digite aqui (ex.: 32 ou A, B, C)',
@@ -314,34 +402,52 @@ class _ChallengePlayerState extends State<ChallengePlayer> {
     );
   }
 
+  /// Resposta numérica: display da resposta + numpad do jogo (sem teclado do
+  /// sistema). O texto vai para o mesmo [_textCtrl] — parse e submissão iguais.
+  Widget _numericAnswerArea(bool locked) {
+    final zon = context.zon;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GamePanel(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _textCtrl,
+            builder: (context, value, _) => Text(
+              value.text.isEmpty ? '—' : value.text,
+              textAlign: TextAlign.center,
+              style: AppText.numeric.copyWith(
+                fontSize: 28,
+                color: value.text.isEmpty
+                    ? zon.onSurfaceMuted
+                    : zon.onSurface,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        GameNumpad(controller: _textCtrl, enabled: !locked),
+      ],
+    );
+  }
+
   Widget _bottomButton(bool answered) {
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 22),
-              textStyle: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1,
-              ),
-            ),
-            onPressed: answered
-                ? widget.onNext
-                : (widget.submitting ? null : () => _submit()),
-            child: widget.submitting
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppColors.ink),
-                  )
-                : Text(answered ? 'PRÓXIMO ▶' : 'RESPONDER'),
-          ),
+        child: GameButton(
+          label: answered ? 'PRÓXIMO' : 'RESPONDER',
+          icon: answered ? LucideIcons.arrowRight : null,
+          variant: answered
+              ? GameButtonVariant.success
+              : GameButtonVariant.primary,
+          size: GameButtonSize.lg,
+          expanded: true,
+          loading: widget.submitting,
+          onPressed: answered
+              ? widget.onNext
+              : (widget.submitting ? null : () => _submit()),
         ),
       ),
     );

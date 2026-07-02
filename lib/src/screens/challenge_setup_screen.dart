@@ -173,7 +173,7 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('CONFIGURAR DESAFIOS')),
+      appBar: AppBar(title: const Text('Escolher desafios')),
       body: FutureBuilder<List<ChallengeOption>>(
         future: _future,
         builder: (context, snap) {
@@ -181,18 +181,23 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('${snap.error}'));
+            return EmptyState(
+              icon: LucideIcons.cloudOff,
+              title: 'Ops, algo deu errado',
+              message: '${snap.error}',
+              action: GameButton(
+                label: 'TENTAR DE NOVO',
+                icon: LucideIcons.refreshCw,
+                onPressed: () => setState(() => _future = _load()),
+              ),
+            );
           }
           if (_catalog.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Você já resolveu todos os desafios disponíveis! Volte mais tarde.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
+            return const EmptyState(
+              icon: LucideIcons.trophy,
+              title: 'Você zerou os desafios!',
+              message:
+                  'Já resolveu todos os disponíveis. Volte mais tarde para novos desafios.',
             );
           }
           return _content();
@@ -200,6 +205,13 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
       ),
     );
   }
+
+  /// Pool total de uma área com o modo atual (novos + revisão se ligada).
+  int _areaPool(String a) =>
+      _catalog.where((o) => o.area == a).fold(0, (s, o) => s + _pool(o));
+
+  int get _allAreasPool =>
+      _catalog.fold(0, (s, o) => s + _pool(o));
 
   Widget _content() {
     final themes = _themes;
@@ -212,51 +224,71 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _section(LucideIcons.layers, 'ÁREAS'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: SectionHeader(icon: LucideIcons.layers, title: 'Áreas'),
+              ),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 8,
+                childAspectRatio: 3.1,
                 children: [
-                  _chip('Todas', _selAreas.isEmpty,
-                      () => setState(() {
-                            _selAreas.clear();
-                            _reconcileSelection();
-                          })),
+                  _AreaCard(
+                    label: 'Todas',
+                    icon: LucideIcons.sparkles,
+                    color: context.zon.brand,
+                    count: _allAreasPool,
+                    selected: _selAreas.isEmpty,
+                    onTap: () => setState(() {
+                      _selAreas.clear();
+                      _reconcileSelection();
+                    }),
+                  ),
                   for (final a in _areas)
-                    _chip(_areaLabel(a), _selAreas.contains(a),
-                        () => _toggleArea(a)),
+                    _AreaCard(
+                      label: _areaLabel(a),
+                      icon: areaIcon(a),
+                      color: areaColor(a),
+                      count: _areaPool(a),
+                      selected: _selAreas.contains(a),
+                      onTap: () => _toggleArea(a),
+                    ),
                 ],
               ),
               if (themes.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                _section(LucideIcons.tag, 'TEMAS'),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: SectionHeader(icon: LucideIcons.tag, title: 'Temas'),
+                ),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _chip('Todos', _selThemes.isEmpty,
-                        () => setState(() {
+                    GameSelectChip(
+                        label: 'Todos',
+                        selected: _selThemes.isEmpty,
+                        onTap: () => setState(() {
                               _selThemes.clear();
                               _reconcileSelection();
                             })),
                     for (final t in themes)
-                      _chip(t, _selThemes.contains(t), () => _toggleTheme(t)),
+                      GameSelectChip(
+                          label: t,
+                          selected: _selThemes.contains(t),
+                          onTap: () => _toggleTheme(t)),
                   ],
                 ),
               ],
               const SizedBox(height: 20),
-              _section(LucideIcons.gauge, 'NÍVEL'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _chip('Qualquer', _difficulty == null,
-                      () => setState(() => _difficulty = null)),
-                  for (final d in diffs)
-                    _chip('Nível $d', _difficulty == d,
-                        () => setState(() => _difficulty = d)),
-                ],
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: SectionHeader(icon: LucideIcons.gauge, title: 'Nível'),
               ),
+              _levelRow(diffs),
               const SizedBox(height: 20),
               _reviewToggle(),
               if (_includeSolved) ...[
@@ -272,17 +304,67 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: count == 0 ? null : _start,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  textStyle: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: 1),
+            child: GameButton(
+              label: 'INICIAR',
+              icon: LucideIcons.play,
+              size: GameButtonSize.lg,
+              expanded: true,
+              onPressed: count == 0 ? null : _start,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Steppers quadrados de nível + pill "Qualquer" abaixo.
+  Widget _levelRow(List<int> diffs) {
+    final zon = context.zon;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            for (final d in diffs)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: GamePressable(
+                    onTap: () => setState(() => _difficulty = d),
+                    faceColor: d == _difficulty ? zon.brand : zon.surface,
+                    borderColor: d == _difficulty ? zon.brand : zon.outline,
+                    edgeColor:
+                        d == _difficulty ? zon.brandEdge : zon.neutralEdge,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: Text(
+                        '$d',
+                        style: AppText.numeric.copyWith(
+                          fontSize: 18,
+                          color: d == _difficulty
+                              ? zon.onBrand
+                              : zon.onSurfaceMuted,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                icon: const Icon(LucideIcons.play, size: 20),
-                label: const Text('INICIAR'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        GamePressable(
+          onTap: () => setState(() => _difficulty = null),
+          faceColor: _difficulty == null ? zon.brand : zon.surface,
+          borderColor: _difficulty == null ? zon.brand : zon.outline,
+          edgeColor: _difficulty == null ? zon.brandEdge : zon.neutralEdge,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: Text(
+              'Qualquer nível',
+              style: AppText.label.copyWith(
+                color:
+                    _difficulty == null ? zon.onBrand : zon.onSurfaceMuted,
               ),
             ),
           ),
@@ -292,50 +374,48 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
   }
 
   Widget _reviewToggle() {
-    return ComicPanel(
+    final zon = context.zon;
+    return GamePanel(
       padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
       child: Row(
         children: [
-          const Icon(LucideIcons.repeat, size: 20, color: AppColors.red),
+          Icon(LucideIcons.repeat, size: 20, color: zon.brand),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Modo revisão',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const Text('Modo revisão', style: AppText.bodyStrong),
                 Text('Incluir desafios já pontuados',
-                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                    style: AppText.caption
+                        .copyWith(color: zon.onSurfaceMuted)),
               ],
             ),
           ),
-          Switch(
-            value: _includeSolved,
-            activeThumbColor: AppColors.red,
-            onChanged: _setIncludeSolved,
-          ),
+          Switch(value: _includeSolved, onChanged: _setIncludeSolved),
         ],
       ),
     );
   }
 
   Widget _reviewWarning() {
+    final zon = context.zon;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.red.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.red.withValues(alpha: 0.35)),
+        color: zon.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(Corners.md),
+        border: Border.all(color: zon.warning.withValues(alpha: 0.45)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(LucideIcons.triangleAlert, size: 20, color: AppColors.red),
-          SizedBox(width: 12),
+          Icon(LucideIcons.timer, size: 20, color: zon.warning),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Atenção: nos desafios que você já pontuou, o tempo é reduzido pela '
-              'metade (−50%). Resolva mais rápido para pontuar de novo!',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              'Na revisão o tempo cai pela metade (−50%). Resolva mais '
+              'rápido para pontuar de novo!',
+              style: AppText.label.copyWith(color: zon.onSurface),
             ),
           ),
         ],
@@ -343,45 +423,8 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
     );
   }
 
-  Widget _section(IconData icon, String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: AppColors.brown),
-            const SizedBox(width: 8),
-            Text(title,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 15, letterSpacing: 0.5)),
-          ],
-        ),
-      );
-
-  Widget _chip(String label, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.orange : AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? AppColors.orange : AppColors.line,
-            width: 1.5,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: selected ? AppColors.white : AppColors.ink,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _countCard(int count) {
+    final zon = context.zon;
     final newN = _newTotal;
     final revN = _revisionTotal;
     // detalhamento: "X novos · Y em revisão" (revisão só quando o modo está on)
@@ -391,28 +434,126 @@ class _ChallengeSetupScreenState extends State<ChallengeSetupScreen> {
     ];
     final subtitle = count == 0 ? 'Ajuste os filtros acima.' : parts.join(' · ');
 
-    return ComicPanel(
-      color: count == 0 ? AppColors.paperDark : AppColors.paper,
+    return GamePanel(
+      color: count == 0 ? zon.surfaceAlt : zon.surface,
       child: Row(
         children: [
-          Icon(count == 0 ? LucideIcons.circleOff : LucideIcons.brain,
-              color: count == 0 ? AppColors.muted : AppColors.orange, size: 28),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: (count == 0 ? zon.onSurfaceMuted : zon.brand)
+                  .withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              count == 0 ? LucideIcons.circleOff : LucideIcons.brain,
+              color: count == 0 ? zon.onSurfaceMuted : zon.brand,
+              size: 26,
+            ),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  count == 0
-                      ? 'Nenhum desafio'
-                      : '$count desafio${count == 1 ? '' : 's'} disponíve${count == 1 ? 'l' : 'is'}',
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w700),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    XpCounter(
+                      value: count,
+                      duration: const Duration(milliseconds: 500),
+                      style: AppText.display.copyWith(fontSize: 28),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        count == 1 ? 'desafio' : 'desafios',
+                        style: AppText.title
+                            .copyWith(color: zon.onSurfaceMuted),
+                      ),
+                    ),
+                  ],
                 ),
                 Text(subtitle,
-                    style:
-                        const TextStyle(fontSize: 13, color: AppColors.muted)),
+                    style: AppText.caption
+                        .copyWith(color: zon.onSurfaceMuted)),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Card chunky selecionável de área de conhecimento (grid 2 colunas).
+class _AreaCard extends StatelessWidget {
+  const _AreaCard({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    return GamePressable(
+      onTap: onTap,
+      faceColor: selected
+          ? Color.alphaBlend(color.withValues(alpha: 0.12), zon.surface)
+          : zon.surface,
+      borderColor: selected ? color : zon.outline,
+      edgeColor: selected
+          ? Color.lerp(color, const Color(0xFF000000), 0.25)!
+          : zon.neutralEdge,
+      borderWidth: selected ? 2.5 : 2,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.label
+                  .copyWith(color: selected ? color : zon.onSurface),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: selected ? color : zon.surfaceAlt,
+              borderRadius: BorderRadius.circular(Corners.pill),
+            ),
+            child: Text(
+              '$count',
+              style: AppText.caption.copyWith(
+                fontSize: 11,
+                color: selected ? zon.onBrand : zon.onSurfaceMuted,
+              ),
             ),
           ),
         ],

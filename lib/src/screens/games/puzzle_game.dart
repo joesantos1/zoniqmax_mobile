@@ -67,6 +67,7 @@ class _PuzzleGameState extends State<PuzzleGame> {
   /// Coloca [pieceId] no [slotId], removendo-a de onde estiver.
   void _place(String slotId, String pieceId) {
     if (widget.locked) return;
+    GameHaptics.correct();
     setState(() {
       _placement.removeWhere((_, pid) => pid == pieceId);
       _placement[slotId] = pieceId;
@@ -76,6 +77,7 @@ class _PuzzleGameState extends State<PuzzleGame> {
 
   void _clearSlot(String slotId) {
     if (widget.locked) return;
+    GameHaptics.tap();
     setState(() {
       _placement.remove(slotId);
       _publish();
@@ -224,6 +226,7 @@ class _PuzzleGameState extends State<PuzzleGame> {
               ? _Tile(label: _pieceLabels[id] ?? '', kind: _TileKind.piece)
               : Draggable<String>(
                   data: id,
+                  onDragStarted: GameHaptics.tap,
                   feedback: Material(
                     color: Colors.transparent,
                     child: _Tile(
@@ -356,29 +359,30 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     late Color bg;
     late Color border;
     late Color fg;
     switch (kind) {
       case _TileKind.fixed:
-        bg = AppColors.surface;
-        border = AppColors.brown;
-        fg = AppColors.ink;
+        bg = zon.surface;
+        border = zon.territory;
+        fg = zon.onSurface;
         break;
       case _TileKind.piece:
-        bg = AppColors.brown;
-        border = AppColors.brown;
-        fg = AppColors.white;
+        bg = zon.territory;
+        border = zon.territory;
+        fg = zon.onBrand;
         break;
       case _TileKind.slotEmpty:
-        bg = AppColors.paperDark;
-        border = AppColors.brown;
-        fg = AppColors.muted;
+        bg = zon.surfaceAlt;
+        border = zon.territory.withValues(alpha: 0.4);
+        fg = zon.onSurfaceMuted;
         break;
       case _TileKind.slotHover:
-        bg = AppColors.orange.withValues(alpha: 0.18);
-        border = AppColors.orange;
-        fg = AppColors.orange;
+        bg = zon.brand.withValues(alpha: 0.18);
+        border = zon.brand;
+        fg = zon.brand;
         break;
     }
 
@@ -395,12 +399,15 @@ class _Tile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: border, width: 2),
+        // peças com edge "chunky" (sombra dura), estilo botão do jogo
         boxShadow: kind == _TileKind.piece
-            ? const [
+            ? [
                 BoxShadow(
-                    color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 3)),
+                    color: zon.territoryEdge,
+                    offset: const Offset(0, 3),
+                    blurRadius: 0),
               ]
             : null,
       ),

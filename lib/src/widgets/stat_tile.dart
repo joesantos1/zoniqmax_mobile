@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 
 /// Chip de classe com ícone (Lucide) + rótulo (e opcionalmente um valor).
+/// Pill sólida na cor da classe, estilo GameChip preenchido.
 class ClassChip extends StatelessWidget {
   const ClassChip({super.key, required this.classType, this.label, this.value});
 
@@ -12,35 +13,30 @@ class ClassChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.classColors[classType] ?? AppColors.brown;
+    final zon = context.zon;
+    final color = kClassColors[classType] ?? zon.territory;
     final text = value != null ? '${label ?? ''} $value'.trim() : (label ?? '');
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 5, 11, 5),
+      padding: const EdgeInsets.fromLTRB(10, 6, 13, 6),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(Corners.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(classIcon(classType), color: AppColors.white, size: 14),
+          Icon(classIcon(classType), color: zon.onBrand, size: 14),
           const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              color: AppColors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 11.5,
-            ),
-          ),
+          Text(text, style: AppText.caption.copyWith(color: zon.onBrand)),
         ],
       ),
     );
   }
 }
 
-/// Cartão de métrica: ícone (Lucide) num círculo tonalizado + rótulo + valor.
-/// Usado nas grades de stats (perfil, perfil público, território, desafio).
+/// Cartão de métrica: ícone (Lucide) num quadrado arredondado tonalizado +
+/// rótulo + valor. Usado nas grades de stats (perfil, perfil público,
+/// território, desafio).
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -57,7 +53,8 @@ class StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ComicPanel(
+    final zon = context.zon;
+    return GamePanel(
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
@@ -66,7 +63,7 @@ class StatTile extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 20),
           ),
@@ -77,22 +74,15 @@ class StatTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.muted,
-                  ),
+                  style: AppText.caption.copyWith(color: zon.onSurfaceMuted),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.ink,
-                  ),
+                  style: AppText.numeric
+                      .copyWith(fontSize: 20, color: zon.onSurface),
                 ),
               ],
             ),

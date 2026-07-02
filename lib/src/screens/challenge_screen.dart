@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -49,6 +48,10 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
   int _round = 0;
   bool _submitting = false;
   AttemptResult? _result;
+
+  // streak de acertos da sessão (UI pura — sem efeito nas mecânicas)
+  int _streak = 0;
+  int _confettiTick = 0; // incrementa a cada acerto para disparar o confete
 
   // anti-chute (sessão): quantos chutes detectados e total de influência perdida
   int _guessStrikes = 0;
@@ -161,97 +164,91 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
   }
 
   Future<void> _showLevelPicker() async {
+    final zon = context.zon;
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
-      // respeita os recortes do sistema (status bar / barra de navegação)
+      // respeita os recortes do sistema (status bar / barra de navegação);
+      // forma e cor vêm do bottomSheetTheme (radius 24)
       useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Escolha o nível',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                for (int d = 1; d <= 5; d++)
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _changeDifficulty(d);
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: d == _difficulty
-                              ? AppColors.orange
-                              : AppColors.paperDark,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: d == _difficulty
-                                ? AppColors.orange
-                                : AppColors.line,
-                            width: 1.5,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$d',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 20,
-                            color: d == _difficulty
-                                ? AppColors.white
-                                : AppColors.muted,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: zon.outline,
+                    borderRadius: BorderRadius.circular(Corners.pill),
+                  ),
+                ),
+              ),
+              const Text('Escolha o nível', style: AppText.title),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  for (int d = 1; d <= 5; d++)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: GamePressable(
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _changeDifficulty(d);
+                          },
+                          faceColor:
+                              d == _difficulty ? zon.brand : zon.surface,
+                          borderColor:
+                              d == _difficulty ? zon.brand : zon.outline,
+                          edgeColor: d == _difficulty
+                              ? zon.brandEdge
+                              : zon.neutralEdge,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: Center(
+                            child: Text(
+                              '$d',
+                              style: AppText.numeric.copyWith(
+                                fontSize: 20,
+                                color: d == _difficulty
+                                    ? zon.onBrand
+                                    : zon.onSurfaceMuted,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _changeDifficulty(null);
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: _difficulty == null
-                      ? AppColors.orange
-                      : AppColors.paperDark,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color:
-                        _difficulty == null ? AppColors.orange : AppColors.line,
-                    width: 1.5,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Qualquer nível',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color:
-                        _difficulty == null ? AppColors.white : AppColors.muted,
+                ],
+              ),
+              const SizedBox(height: 8),
+              GamePressable(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _changeDifficulty(null);
+                },
+                faceColor: _difficulty == null ? zon.brand : zon.surface,
+                borderColor: _difficulty == null ? zon.brand : zon.outline,
+                edgeColor:
+                    _difficulty == null ? zon.brandEdge : zon.neutralEdge,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    'Qualquer nível',
+                    style: AppText.bodyStrong.copyWith(
+                      color: _difficulty == null
+                          ? zon.onBrand
+                          : zon.onSurfaceMuted,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
           ),
         ),
       ),
@@ -275,12 +272,26 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
         _result = result;
         _submitting = false;
         _totalXp += result.xpAwarded; // sobe na hora
+        _streak = result.success ? _streak + 1 : 0;
+        if (result.success) _confettiTick++;
         // anti-chute: acumula strikes/penalidade da sessão
         if (struck) {
           _guessStrikes++;
           _penaltyTotal += result.penalty;
         }
       });
+      // game feel: haptics conforme o resultado (+ celebração em streak)
+      if (result.success) {
+        if (_streak >= 3) {
+          GameHaptics.celebrate();
+        } else {
+          GameHaptics.correct();
+        }
+      } else if (result.timedOut) {
+        GameHaptics.timeout();
+      } else {
+        GameHaptics.wrong();
+      }
       if (struck) _expandBadge(); // mostra o quadro completo por 5s
       _loadStats(); // reconcilia XP e atualiza o ranking
     } on ApiException catch (e) {
@@ -315,50 +326,65 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          _StatsHeader(
-            totalXp: _totalXp,
-            accuracy: _accuracy,
-            attempts: _attempts,
-            isLeader: _isLeader,
-            aboveName: _aboveName,
-            myInfluence: _myInf,
-            aboveInfluence: _aboveInf,
-            showRanking: widget.territoryId != null,
-            guessStrikes: _guessStrikes,
-            onTapGuess: _expandBadge,
+          Column(
+            children: [
+              _StatsHeader(
+                totalXp: _totalXp,
+                accuracy: _accuracy,
+                attempts: _attempts,
+                isLeader: _isLeader,
+                aboveName: _aboveName,
+                myInfluence: _myInf,
+                aboveInfluence: _aboveInf,
+                showRanking: widget.territoryId != null,
+                guessStrikes: _guessStrikes,
+                streak: _streak,
+                onTapGuess: _expandBadge,
+              ),
+              // quadro completo só enquanto expandido (some após 5s → só o chip)
+              if (_guessStrikes > 0 && _badgeExpanded)
+                GestureDetector(
+                  onTap: _collapseBadge,
+                  child: _AntiGuessBadge(
+                      strikes: _guessStrikes, penaltyTotal: _penaltyTotal),
+                ),
+              Expanded(
+                child: FutureBuilder<Challenge>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return _ErrorBox(
+                          message: '${snapshot.error}', onRetry: _restart);
+                    }
+                    final challenge = snapshot.data!;
+                    return ChallengePlayer(
+                      key: ValueKey(_round),
+                      challenge: challenge,
+                      submitting: _submitting,
+                      answered: _result != null,
+                      resultBanner: _result != null
+                          ? _ResultBanner(result: _result!, streak: _streak)
+                          : null,
+                      onNext: _restart,
+                      onSubmit: (answer, time) =>
+                          _submit(challenge, answer, time),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          // quadro completo só enquanto expandido (some após 5s → fica só o chip)
-          if (_guessStrikes > 0 && _badgeExpanded)
-            GestureDetector(
-              onTap: _collapseBadge,
-              child: _AntiGuessBadge(
-                  strikes: _guessStrikes, penaltyTotal: _penaltyTotal),
-            ),
-          Expanded(
-            child: FutureBuilder<Challenge>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return _ErrorBox(
-                      message: '${snapshot.error}', onRetry: _restart);
-                }
-                final challenge = snapshot.data!;
-                return ChallengePlayer(
-                  key: ValueKey(_round),
-                  challenge: challenge,
-                  submitting: _submitting,
-                  answered: _result != null,
-                  resultBanner:
-                      _result != null ? _ResultBanner(result: _result!) : null,
-                  onNext: _restart,
-                  onSubmit: (answer, time) => _submit(challenge, answer, time),
-                );
-              },
+          // confete celebratório sobre a tela (RepaintBoundary interno,
+          // dirigido por controller — não custa nada quando parado)
+          Positioned.fill(
+            child: ConfettiBurst(
+              play: _confettiTick == 0 ? null : _confettiTick,
+              origin: const Alignment(0, -0.6),
             ),
           ),
         ],
@@ -367,7 +393,8 @@ class _ChallengeScreenState extends State<ChallengeScreen> {
   }
 }
 
-/// Header compacto: XP total + taxa de acerto (linha única) e barra fina de ranking.
+/// Header compacto: XP total (animado), streak da sessão, taxa de acerto e a
+/// barra fina de progresso no ranking do território.
 class _StatsHeader extends StatelessWidget {
   const _StatsHeader({
     required this.totalXp,
@@ -379,6 +406,7 @@ class _StatsHeader extends StatelessWidget {
     required this.aboveInfluence,
     required this.showRanking,
     required this.guessStrikes,
+    required this.streak,
     required this.onTapGuess,
   });
 
@@ -391,14 +419,18 @@ class _StatsHeader extends StatelessWidget {
   final double aboveInfluence;
   final bool showRanking;
   final int guessStrikes; // anti-chute: nº de chutes na sessão (0 = oculto)
+  final int streak; // acertos seguidos na sessão (mostra chama a partir de 2)
   final VoidCallback onTapGuess;
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     final hasTarget = aboveName != null && aboveInfluence > 0;
     final progress =
         hasTarget ? (myInfluence / aboveInfluence).clamp(0.0, 1.0) : 0.0;
     final gap = (aboveInfluence - myInfluence).clamp(0, double.infinity);
+    // amigável no 1º deslize; vermelho só com reincidência
+    final guessColor = guessStrikes >= 2 ? zon.danger : zon.warning;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -407,18 +439,18 @@ class _StatsHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(LucideIcons.zap, color: AppColors.orange, size: 16),
+              Icon(LucideIcons.zap, color: zon.xp, size: 16),
               const SizedBox(width: 4),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: totalXp),
+              XpCounter(
+                value: totalXp.round(),
+                suffix: ' XP',
                 duration: const Duration(milliseconds: 600),
-                curve: Curves.easeOut,
-                builder: (_, v, __) => Text(
-                  '${v.round()} XP',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
+                style: AppText.numeric.copyWith(fontSize: 16),
               ),
+              if (streak >= 2) ...[
+                const SizedBox(width: 10),
+                StreakFlame(count: streak, size: 18),
+              ],
               // anti-chute: ícone + "xN" ao lado do XP total
               if (guessStrikes > 0) ...[
                 const SizedBox(width: 8),
@@ -428,64 +460,55 @@ class _StatsHeader extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.red,
-                      borderRadius: BorderRadius.circular(20),
+                      color: guessColor,
+                      borderRadius: BorderRadius.circular(Corners.pill),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(LucideIcons.shieldAlert,
-                            size: 13, color: AppColors.white),
+                        Icon(LucideIcons.timerReset,
+                            size: 13, color: zon.onBrand),
                         const SizedBox(width: 3),
                         Text('x$guessStrikes',
-                            style: const TextStyle(
-                                color: AppColors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12)),
+                            style: AppText.caption
+                                .copyWith(color: zon.onBrand, fontSize: 12)),
                       ],
                     ),
                   ),
                 ),
               ],
               const Spacer(),
-              const Icon(LucideIcons.target, color: AppColors.green, size: 15),
+              Icon(LucideIcons.target, color: zon.successEdge, size: 15),
               const SizedBox(width: 4),
               Text(
                 attempts == 0 ? '—' : '${accuracy.round()}% acerto',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                style: AppText.bodyStrong.copyWith(fontSize: 15),
               ),
             ],
           ),
           if (showRanking) ...[
             const SizedBox(height: 6),
             if (isLeader)
-              const Text('👑 Você lidera este território!',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: GameChip(
+                  label: 'Você lidera este território!',
+                  icon: LucideIcons.crown,
+                  color: BrandColors.greenBright,
+                  mode: GameChipMode.tonal,
+                ),
+              )
             else if (hasTarget) ...[
               Text(
-                'Faltam ${gap.ceil()} de influência p/ ultrapassar 👤$aboveName',
-                style:
-                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                'Faltam ${gap.ceil()} de influência p/ ultrapassar $aboveName',
+                style: AppText.caption.copyWith(color: zon.onSurfaceMuted),
               ),
               const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(5),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: progress),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOut,
-                  builder: (_, v, __) => LinearProgressIndicator(
-                    value: v,
-                    minHeight: 8,
-                    backgroundColor: AppColors.paperDark,
-                    color: AppColors.red,
-                  ),
-                ),
-              ),
+              GameProgressBar(value: progress, color: zon.danger, height: 8),
             ] else
-              const Text('Jogue para entrar no ranking!',
-                  style: TextStyle(fontSize: 11)),
+              Text('Jogue para entrar no ranking!',
+                  style:
+                      AppText.caption.copyWith(color: zon.onSurfaceMuted)),
           ],
         ],
       ),
@@ -495,6 +518,7 @@ class _StatsHeader extends StatelessWidget {
 
 /// Badge completo de aviso anti-chute: aparece ao ser acionado e recolhe após
 /// 5s, deixando só o chip "xN" ao lado do XP (no header).
+/// Tom de coaching (laranja da marca) no 1º deslize; vermelho só com 2+.
 class _AntiGuessBadge extends StatelessWidget {
   const _AntiGuessBadge({required this.strikes, required this.penaltyTotal});
 
@@ -503,21 +527,23 @@ class _AntiGuessBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     final atRisk = strikes >= 2; // 2+ chutes = risco alto
+    final tone = atRisk ? zon.danger : zon.warning;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.red.withValues(alpha: atRisk ? 0.18 : 0.10),
-        borderRadius: BorderRadius.circular(12),
+        color: tone.withValues(alpha: atRisk ? 0.16 : 0.12),
+        borderRadius: BorderRadius.circular(Corners.sm),
         border: Border.all(
-            color: AppColors.red.withValues(alpha: atRisk ? 0.7 : 0.4),
-            width: 1.5),
+            color: tone.withValues(alpha: atRisk ? 0.7 : 0.45), width: 1.5),
       ),
       child: Row(
         children: [
-          const Icon(LucideIcons.shieldAlert, size: 20, color: AppColors.red),
+          Icon(atRisk ? LucideIcons.shieldAlert : LucideIcons.timerReset,
+              size: 20, color: tone),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -525,18 +551,15 @@ class _AntiGuessBadge extends StatelessWidget {
               children: [
                 Text(
                   atRisk
-                      ? 'EM RISCO — pare de chutar!'
-                      : 'Anti-chute ativado',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: AppColors.red),
+                      ? 'Em risco — respire e responda com calma!'
+                      : 'Calma aí! Respostas no capricho valem mais.',
+                  style: AppText.label.copyWith(color: tone),
                 ),
                 Text(
                   penaltyTotal > 0
-                      ? 'Você já perdeu ${penaltyTotal.toStringAsFixed(0)} de influência. Responda com calma para parar de perder.'
+                      ? 'Você já perdeu ${penaltyTotal.toStringAsFixed(0)} de influência. Sem pressa: pensar antes vale mais pontos.'
                       : 'Respostas rápidas e erradas penalizam sua influência.',
-                  style: const TextStyle(fontSize: 11, color: AppColors.ink),
+                  style: AppText.caption.copyWith(color: zon.onSurface),
                 ),
               ],
             ),
@@ -547,14 +570,12 @@ class _AntiGuessBadge extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppColors.red,
-                borderRadius: BorderRadius.circular(20),
+                color: tone,
+                borderRadius: BorderRadius.circular(Corners.pill),
               ),
               child: Text('x$strikes',
-                  style: const TextStyle(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12)),
+                  style: AppText.caption
+                      .copyWith(color: zon.onBrand, fontSize: 12)),
             ),
           ],
         ],
@@ -563,98 +584,66 @@ class _AntiGuessBadge extends StatelessWidget {
   }
 }
 
-/// Banner de resultado inline, com animação de entrada (pop / shake).
+/// Banner de resultado inline — celebração no acerto (pop + XP contando),
+/// apoio no erro (shake gentil + copy amigável).
 class _ResultBanner extends StatelessWidget {
-  const _ResultBanner({required this.result});
+  const _ResultBanner({required this.result, this.streak = 0});
 
   final AttemptResult result;
+  final int streak;
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     final ok = result.success;
-    final color = ok ? AppColors.green : AppColors.red;
     final title = ok
-        ? 'ACERTOU!'
+        ? (streak >= 3 ? 'ACERTOU! $streak seguidas! 🔥' : 'ACERTOU!')
         : result.timedOut
             ? 'TEMPO ESGOTADO!'
-            : 'ERROU!';
+            : 'QUASE!';
+    final subtitle = ok
+        ? '+${result.score.toStringAsFixed(0)} pts em ${result.area}'
+        : 'Sem pontos desta vez — bora pra próxima! 💪';
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeOutBack,
-      builder: (context, t, child) {
-        final dx = ok ? 0.0 : math.sin(t * math.pi * 3) * 8 * (1 - t);
-        return Transform.translate(
-          offset: Offset(dx, 0),
-          child: Transform.scale(scale: 0.9 + 0.1 * t, child: child),
-        );
-      },
-      child: ComicPanel(
-        color: AppColors.white,
-        child: Row(
-          children: [
-            Icon(ok ? LucideIcons.partyPopper : LucideIcons.x,
-                size: 36, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w700, color: color),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    ok
-                        ? '+${result.score.toStringAsFixed(0)} pts · +${result.xpAwarded.toStringAsFixed(0)} XP (${result.area})'
-                        : 'Nada de pontos desta vez.',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  if (ok && result.classScoreAwarded > 0)
-                    Text(
-                      '+${result.classScoreAwarded.toStringAsFixed(0)} Pesquisador no território',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  if (result.penalty > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          const Icon(LucideIcons.triangleAlert,
-                              size: 14, color: AppColors.red),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              'Anti-chute: −${result.penalty.toStringAsFixed(0)} influência. Pare de chutar!',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.red),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (result.guess)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Evite chutar — respostas rápidas e erradas penalizam!',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.red),
-                      ),
-                    ),
-                ],
-              ),
+    return ResultCard(
+      success: ok,
+      title: title,
+      subtitle: subtitle,
+      xp: ok ? result.xpAwarded.round() : null,
+      extra: [
+        if (ok && result.classScoreAwarded > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '+${result.classScoreAwarded.toStringAsFixed(0)} Pesquisador no território',
+              style: AppText.caption.copyWith(color: zon.onSurfaceMuted),
             ),
-          ],
-        ),
-      ),
+          ),
+        if (result.penalty > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Icon(LucideIcons.timerReset, size: 14, color: zon.warning),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Anti-chute: −${result.penalty.toStringAsFixed(0)} influência. Com calma vale mais!',
+                    style: AppText.caption.copyWith(color: zon.warning),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (result.guess)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Sem pressa — respostas pensadas valem mais pontos.',
+              style: AppText.caption.copyWith(color: zon.warning),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -666,14 +655,14 @@ class _ErrorBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('Tentar de novo')),
-        ],
+    return EmptyState(
+      icon: LucideIcons.cloudOff,
+      title: 'Ops, algo deu errado',
+      message: message,
+      action: GameButton(
+        label: 'TENTAR DE NOVO',
+        icon: LucideIcons.refreshCw,
+        onPressed: onRetry,
       ),
     );
   }

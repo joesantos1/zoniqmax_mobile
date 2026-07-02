@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
 import '../models.dart';
@@ -42,6 +43,7 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     return Scaffold(
       appBar: AppBar(
         title: const Text('TERRITÓRIOS'),
@@ -50,17 +52,17 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => ProfileScreen(api: widget.api)),
             ),
-            icon: const Icon(Icons.person),
+            icon: const Icon(LucideIcons.circleUser),
             tooltip: 'Perfil',
           ),
           IconButton(
             onPressed: _reload,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(LucideIcons.refreshCw),
             tooltip: 'Recarregar',
           ),
           IconButton(
             onPressed: _logout,
-            icon: const Icon(Icons.logout),
+            icon: const Icon(LucideIcons.logOut),
             tooltip: 'Sair',
           ),
         ],
@@ -72,17 +74,36 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return _ErrorView(
+            return EmptyState(
+              icon: LucideIcons.cloudOff,
+              color: zon.danger,
+              title: 'Ops, algo deu errado',
               message: '${snapshot.error}',
-              onRetry: _reload,
+              action: GameButton(
+                label: 'TENTAR DE NOVO',
+                icon: LucideIcons.refreshCw,
+                onPressed: _reload,
+              ),
             );
           }
           final territories = snapshot.data ?? [];
           if (territories.isEmpty) {
-            return const Center(child: Text('Nenhum território disponível.'));
+            return EmptyState(
+              icon: LucideIcons.map,
+              title: 'Nenhuma zona por aqui ainda',
+              message: 'O mapa ainda está sendo desbravado. '
+                  'Atualize para procurar novos territórios!',
+              action: GameButton(
+                label: 'ATUALIZAR',
+                icon: LucideIcons.refreshCw,
+                variant: GameButtonVariant.secondary,
+                onPressed: _reload,
+              ),
+            );
           }
           return RefreshIndicator(
             onRefresh: () async => _reload(),
+            color: zon.brand,
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: territories.length,
@@ -90,7 +111,7 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
                 final t = territories[i];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: ComicPanel(
+                  child: GamePanel(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) =>
@@ -99,25 +120,33 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.hexagon, color: AppColors.brown, size: 32),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: zon.territory.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(LucideIcons.hexagon,
+                              color: zon.territory, size: 20),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                t.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 18),
-                              ),
+                              Text(t.name, style: AppText.bodyStrong),
+                              const SizedBox(height: 2),
                               Text(
                                 '${t.centerLat.toStringAsFixed(4)}, ${t.centerLng.toStringAsFixed(4)}',
-                                style: const TextStyle(fontSize: 12),
+                                style: AppText.caption
+                                    .copyWith(color: zon.onSurfaceMuted),
                               ),
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right, color: AppColors.ink),
+                        Icon(LucideIcons.chevronRight,
+                            color: zon.onSurfaceMuted, size: 20),
                       ],
                     ),
                   ),
@@ -126,32 +155,6 @@ class _TerritoriesScreenState extends State<TerritoriesScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off, size: 48),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Tentar de novo')),
-          ],
-        ),
       ),
     );
   }

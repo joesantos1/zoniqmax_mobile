@@ -684,3 +684,65 @@ class Me {
     );
   }
 }
+
+/// Bônus de tempo enviado pelo doador que ainda aguarda uso (PENDENTE).
+class PendingBonus {
+  final String receiverUserId;
+  final String receiverName;
+  final String area;
+  final int bonusSeconds;
+  final DateTime? expiresAt;
+
+  PendingBonus({
+    required this.receiverUserId,
+    required this.receiverName,
+    required this.area,
+    required this.bonusSeconds,
+    required this.expiresAt,
+  });
+
+  factory PendingBonus.fromJson(Map<String, dynamic> json) => PendingBonus(
+        receiverUserId: json['receiverUserId'] as String,
+        receiverName: json['receiverName'] as String? ?? '',
+        area: json['area'] as String,
+        bonusSeconds: (json['bonusSeconds'] as num).toInt(),
+        expiresAt: json['expiresAt'] != null
+            ? DateTime.tryParse(json['expiresAt'] as String)
+            : null,
+      );
+}
+
+/// Resumo dos envios de bônus do doador: pendentes + orçamento diário
+/// (o limite reseta às 00:00).
+class OutgoingBonusSummary {
+  final int dailyLimitSeconds;
+  final int usedTodaySeconds;
+  final int remainingTodaySeconds;
+  final List<PendingBonus> pending;
+
+  OutgoingBonusSummary({
+    required this.dailyLimitSeconds,
+    required this.usedTodaySeconds,
+    required this.remainingTodaySeconds,
+    required this.pending,
+  });
+
+  /// Bônus pendente para um (receptor, área), se houver.
+  PendingBonus? pendingFor(String receiverUserId, String area) {
+    for (final p in pending) {
+      if (p.receiverUserId == receiverUserId && p.area == area) return p;
+    }
+    return null;
+  }
+
+  factory OutgoingBonusSummary.fromJson(Map<String, dynamic> json) =>
+      OutgoingBonusSummary(
+        dailyLimitSeconds: (json['dailyLimitSeconds'] as num).toInt(),
+        usedTodaySeconds: (json['usedTodaySeconds'] as num).toInt(),
+        remainingTodaySeconds:
+            (json['remainingTodaySeconds'] as num).toInt(),
+        pending: (json['pending'] as List<dynamic>? ?? [])
+            .map((e) => PendingBonus.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}

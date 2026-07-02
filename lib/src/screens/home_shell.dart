@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
 import '../models.dart';
+import '../theme.dart';
 import 'map_screen.dart';
 import 'profile_screen.dart';
 import 'ranking_tab.dart';
@@ -90,20 +91,18 @@ class _HomeShellState extends State<HomeShell> {
           ProfileScreen(api: widget.api),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: GameNavBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() {
+        onSelected: (i) => setState(() {
           // ao (re)abrir a aba do mapa, dispara um refresh incremental barato
           if (i == 0 && _index != 0) _mapVersion++;
           _index = i;
         }),
-        destinations: const [
-          NavigationDestination(icon: Icon(LucideIcons.map), label: 'Mapa'),
-          NavigationDestination(
-              icon: Icon(LucideIcons.hexagon), label: 'Território'),
-          NavigationDestination(
-              icon: Icon(LucideIcons.trophy), label: 'Ranking'),
-          NavigationDestination(icon: Icon(LucideIcons.user), label: 'Perfil'),
+        items: const [
+          GameNavItem(icon: LucideIcons.map, label: 'Mapa'),
+          GameNavItem(icon: LucideIcons.hexagon, label: 'Território'),
+          GameNavItem(icon: LucideIcons.trophy, label: 'Ranking'),
+          GameNavItem(icon: LucideIcons.user, label: 'Perfil'),
         ],
       ),
     );

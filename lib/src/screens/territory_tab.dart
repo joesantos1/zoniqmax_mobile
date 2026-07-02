@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -113,9 +112,11 @@ class _TerritoryTabState extends State<TerritoryTab> {
   Future<void> _sendBonus(RankingEntry e) async {
     Me me;
     PublicProfile profile;
+    OutgoingBonusSummary outgoing;
     try {
       me = await widget.api.me();
       profile = await widget.api.getPlayer(e.userId);
+      outgoing = await widget.api.outgoingBonuses();
     } catch (_) {
       _snack('Falha ao carregar os dados.');
       return;
@@ -133,8 +134,11 @@ class _TerritoryTabState extends State<TerritoryTab> {
     }
     if (!mounted) return;
 
+    final zon = context.zon;
+    final remaining = outgoing.remainingTodaySeconds;
+    final maxSend = remaining.clamp(0, 10);
     String area = areas.first;
-    int seconds = 5;
+    int seconds = maxSend >= 5 ? 5 : (maxSend > 0 ? maxSend : 1);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -142,44 +146,50 @@ class _TerritoryTabState extends State<TerritoryTab> {
           final myX = donorXp[area] ?? 0;
           final rX = recvXp[area] ?? 0;
           final allowed = myX > 0 && rX < myX;
+          // bônus já enviado para esse jogador nesta área, aguardando uso
+          final pendente = outgoing.pendingFor(e.userId, area);
+          final noBudget = maxSend < 1;
+          final canSend = allowed && pendente == null && !noBudget;
+          final accent = allowed ? zon.success : zon.danger;
           return AlertDialog(
-            title: Text('Bônus de tempo p/ ${e.name}'),
+            title: Text('Bônus de tempo para ${e.name}'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Área:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('Área:', style: AppText.label),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
                     for (final a in areas)
-                      ChoiceChip(
-                        label: Text(_areaLabels[a] ?? a),
+                      GameSelectChip(
+                        label: _areaLabels[a] ?? a,
+                        icon: areaIcon(a),
+                        color: areaColor(a),
                         selected: area == a,
-                        onSelected: (_) => setS(() => area = a),
+                        onTap: () => setS(() => area = a),
                       ),
                   ],
                 ),
                 const SizedBox(height: 14),
-                // XP comparativo + permissão
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: (allowed ? AppColors.green : AppColors.red)
-                        .withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                // XP comparativo + permissão (painel tonal verde/vermelho)
+                GamePanel(
+                  color: Color.alphaBlend(
+                      accent.withValues(alpha: 0.12), zon.surface),
+                  borderColor: accent.withValues(alpha: 0.45),
+                  shadow: false,
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Seu XP em ${_areaLabels[area] ?? area}: ${myX.round()}',
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text(
+                          'Seu XP em ${_areaLabels[area] ?? area}: ${myX.round()}',
+                          style: AppText.label),
                       Text('XP de ${e.name}: ${rX.round()}',
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
+                          style: AppText.label),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
                           Icon(
@@ -187,20 +197,15 @@ class _TerritoryTabState extends State<TerritoryTab> {
                                   ? LucideIcons.circleCheck
                                   : LucideIcons.circleX,
                               size: 16,
-                              color:
-                                  allowed ? AppColors.green : AppColors.red),
+                              color: accent),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               allowed
-                                  ? 'Você pode enviar bônus nesta área.'
-                                  : 'Jogador tem XP maior ou igual o seu.',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: allowed
-                                      ? AppColors.green
-                                      : AppColors.red),
+                                  ? 'Você pode enviar bônus nesta área!'
+                                  : 'Esse jogador tem XP maior ou igual ao seu.',
+                              style:
+                                  AppText.caption.copyWith(color: accent),
                             ),
                           ),
                         ],
@@ -208,26 +213,87 @@ class _TerritoryTabState extends State<TerritoryTab> {
                     ],
                   ),
                 ),
+                // bônus pendente nesta área: aguarda o receptor usar
+                if (allowed && pendente != null) ...[
+                  const SizedBox(height: 10),
+                  GamePanel(
+                    color: Color.alphaBlend(
+                        zon.warning.withValues(alpha: 0.12), zon.surface),
+                    borderColor: zon.warning.withValues(alpha: 0.45),
+                    shadow: false,
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.hourglass,
+                            size: 16, color: zon.warning),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Você já enviou +${pendente.bonusSeconds}s nesta '
+                            'área — aguardando ${e.name} usar.',
+                            style: AppText.caption
+                                .copyWith(color: zon.onSurface),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
-                Text('Bônus: +$seconds s',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Slider(
-                  value: seconds.toDouble(),
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  label: '+$seconds s',
-                  onChanged: (v) => setS(() => seconds = v.round()),
+                // orçamento diário do doador (reseta às 00:00)
+                Row(
+                  children: [
+                    Icon(LucideIcons.calendarClock,
+                        size: 14,
+                        color:
+                            noBudget ? zon.danger : zon.onSurfaceMuted),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        noBudget
+                            ? 'Limite diário atingido — volta à meia-noite!'
+                            : 'Hoje: ${remaining}s de ${outgoing.dailyLimitSeconds}s disponíveis',
+                        style: AppText.caption.copyWith(
+                            color: noBudget
+                                ? zon.danger
+                                : zon.onSurfaceMuted),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 4),
+                GameProgressBar(
+                  value: outgoing.dailyLimitSeconds > 0
+                      ? remaining / outgoing.dailyLimitSeconds
+                      : 0,
+                  color: noBudget ? zon.danger : zon.brand,
+                  height: 6,
+                ),
+                if (canSend) ...[
+                  const SizedBox(height: 12),
+                  Text('Bônus: +$seconds s', style: AppText.bodyStrong),
+                  if (maxSend > 1)
+                    Slider(
+                      value: seconds.clamp(1, maxSend).toDouble(),
+                      min: 1,
+                      max: maxSend.toDouble(),
+                      divisions: maxSend - 1,
+                      label: '+$seconds s',
+                      onChanged: (v) => setS(() => seconds = v.round()),
+                    ),
+                ],
               ],
             ),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Cancelar')),
-              FilledButton(
-                  onPressed: allowed ? () => Navigator.pop(ctx, true) : null,
-                  child: const Text('Enviar')),
+              GameButton(
+                label: 'ENVIAR',
+                icon: LucideIcons.timer,
+                size: GameButtonSize.sm,
+                onPressed: canSend ? () => Navigator.pop(ctx, true) : null,
+              ),
             ],
           );
         },
@@ -283,22 +349,29 @@ class _TerritoryTabState extends State<TerritoryTab> {
   }
 
   Widget _buildContent() {
+    final zon = context.zon;
     if (widget.territoryId == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'Abra o mapa e escolha uma zona para ver seus dados.',
-            textAlign: TextAlign.center,
-          ),
-        ),
+      return const EmptyState(
+        icon: LucideIcons.map,
+        title: 'Escolha uma zona no mapa',
+        message: 'Toque numa zona do mapa para ver os dados dela por aqui.',
       );
     }
     if (_loading && _detail == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null && _detail == null) {
-      return Center(child: Text(_error!));
+      return EmptyState(
+        icon: LucideIcons.cloudOff,
+        color: zon.danger,
+        title: 'Ops, algo deu errado',
+        message: _error,
+        action: GameButton(
+          label: 'TENTAR DE NOVO',
+          icon: LucideIcons.refreshCw,
+          onPressed: _reload,
+        ),
+      );
     }
     final d = _detail!;
     final myId = widget.api.currentUserId;
@@ -309,143 +382,124 @@ class _TerritoryTabState extends State<TerritoryTab> {
         myIndex >= 0 ? d.generalRanking[myIndex].effectiveInfluence : 0.0;
     final myPos = myIndex >= 0 ? myIndex + 1 : null;
 
-    final govName = d.governorUserId == null
+    final governor = d.governorUserId == null || d.generalRanking.isEmpty
         ? null
-        : d.generalRanking
-            .firstWhere((e) => e.userId == d.governorUserId,
-                orElse: () => d.generalRanking.first)
-            .name;
+        : d.generalRanking.firstWhere((e) => e.userId == d.governorUserId,
+            orElse: () => d.generalRanking.first);
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      color: AppColors.orange,
+      color: zon.brand,
       child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    _Header(detail: d),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StatTile(
-                            icon: LucideIcons.crown,
-                            label: 'GOVERNADOR',
-                            value: govName ?? 'Livre',
-                            color: AppColors.red,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: StatTile(
-                            icon: LucideIcons.users,
-                            label: 'JOGADORES',
-                            value: '${d.generalRanking.length}',
-                            color: AppColors.brown,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StatTile(
-                            icon: LucideIcons.zap,
-                            label: 'SUA INFLUÊNCIA',
-                            value: myInf.toStringAsFixed(0),
-                            color: AppColors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: StatTile(
-                            icon: LucideIcons.trophy,
-                            label: 'SUA POSIÇÃO',
-                            value: myPos == null ? '—' : '#$myPos',
-                            color: AppColors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    if (widget.isPresent)
-                      FilledButton.icon(
-                        onPressed: _startChallenge,
-                        icon: const Icon(LucideIcons.brain, size: 18),
-                        label: const Text('INICIAR DESAFIOS'),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.brown.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(AppRadius.card),
-                          border: Border.all(
-                              color: AppColors.brown.withValues(alpha: 0.30)),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(LucideIcons.mapPinOff,
-                                size: 20, color: AppColors.brown),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Você está visualizando este território. '
-                                'Vá até a zona para realizar desafios e pontuar aqui.',
-                                style: TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (iAmGovernor) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () => _customize(d),
-                        icon: const Icon(LucideIcons.palette, size: 18),
-                        label: const Text('PERSONALIZAR TERRITÓRIO'),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        const Icon(LucideIcons.users,
-                            size: 18, color: AppColors.brown),
-                        const SizedBox(width: 8),
-                        Text(
-                          'JOGADORES (${d.generalRanking.length})',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (d.generalRanking.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          'Nenhum jogador ativo ainda. Seja o primeiro!',
-                          style: TextStyle(color: AppColors.muted),
-                        ),
-                      )
-                    else
-                      for (final e in d.generalRanking)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _PlayerRow(
-                            entry: e,
-                            isGovernor: e.userId == d.governorUserId,
-                            isMe: e.userId == myId,
-                            onTap: () => _openPlayer(e),
-                            onSendBonus: e.userId == myId
-                                ? null
-                                : () => _sendBonus(e),
-                          ),
-                        ),
-                  ],
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          _Header(detail: d, governor: governor),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: StatTile(
+                  icon: LucideIcons.zap,
+                  label: 'SUA INFLUÊNCIA',
+                  value: myInf.toStringAsFixed(0),
+                  color: zon.info,
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: StatTile(
+                  icon: LucideIcons.trophy,
+                  label: 'SUA POSIÇÃO',
+                  value: myPos == null ? '—' : '#$myPos',
+                  color: zon.success,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (widget.isPresent)
+            GameButton(
+              label: 'INICIAR DESAFIOS',
+              icon: LucideIcons.brain,
+              size: GameButtonSize.lg,
+              expanded: true,
+              onPressed: _startChallenge,
+            )
+          else
+            GamePanel(
+              color: Color.alphaBlend(
+                  zon.territory.withValues(alpha: 0.10), zon.surface),
+              borderColor: zon.territory.withValues(alpha: 0.45),
+              shadow: false,
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: zon.territory.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(LucideIcons.mapPinOff,
+                        size: 16, color: zon.territory),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Você está só de visita por aqui. '
+                      'Vá até a zona para realizar desafios e pontuar!',
+                      style: AppText.body.copyWith(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (iAmGovernor) ...[
+            const SizedBox(height: 12),
+            GameButton(
+              label: 'PERSONALIZAR TERRITÓRIO',
+              icon: LucideIcons.palette,
+              variant: GameButtonVariant.secondary,
+              expanded: true,
+              onPressed: () => _customize(d),
+            ),
+          ],
+          const SizedBox(height: 24),
+          SectionHeader(
+            icon: LucideIcons.users,
+            title: 'Jogadores',
+            color: zon.territory,
+            trailing: GameChip(
+              label: '${d.generalRanking.length}',
+              color: zon.territory,
+              mode: GameChipMode.tonal,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (d.generalRanking.isEmpty)
+            const EmptyState(
+              icon: LucideIcons.users,
+              title: 'Nenhum jogador ativo ainda',
+              message: 'Seja quem estreia esta zona!',
+            )
+          else
+            for (final e in d.generalRanking)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _PlayerRow(
+                  entry: e,
+                  isGovernor: e.userId == d.governorUserId,
+                  isMe: e.userId == myId,
+                  onTap: () => _openPlayer(e),
+                  onSendBonus: e.userId == myId
+                      ? null
+                      : () => _sendBonus(e),
+                ),
+              ),
+        ],
+      ),
     );
   }
 }
@@ -490,170 +544,162 @@ class _PlayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasAvatar = entry.avatarUrl != null && entry.avatarUrl!.isNotEmpty;
+    final zon = context.zon;
     final accent = entry.classes.isNotEmpty
-        ? (AppColors.classColors[entry.classes.first] ?? AppColors.orange)
-        : AppColors.brown;
+        ? (kClassColors[entry.classes.first] ?? zon.brand)
+        : zon.territory;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadius.card),
+    return GamePanel(
       onTap: onTap,
-      child: ComicPanel(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              child: Text(
-                '#${entry.position}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: AppColors.muted),
-              ),
+      color: isMe
+          ? Color.alphaBlend(zon.brand.withValues(alpha: 0.10), zon.surface)
+          : null,
+      borderColor: isMe ? zon.brand : null,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: zon.surfaceAlt,
+              borderRadius: BorderRadius.circular(9),
             ),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: accent.withValues(alpha: 0.18),
-              backgroundImage: hasAvatar
-                  ? CachedNetworkImageProvider(entry.avatarUrl!)
-                  : null,
-              child: hasAvatar
-                  ? null
-                  : Text(
-                      entry.name.isNotEmpty
-                          ? entry.name[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: accent),
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          entry.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
+            child: Text('${entry.position}',
+                style: AppText.label.copyWith(fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 10),
+          AvatarRing(
+            imageUrl: entry.avatarUrl,
+            initial: entry.name.isNotEmpty ? entry.name[0] : '?',
+            size: 40,
+            ringColor: accent,
+            ringWidth: 2,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        entry.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.bodyStrong,
                       ),
-                      if (isGovernor) ...[
-                        const SizedBox(width: 6),
-                        const Icon(LucideIcons.crown,
-                            size: 15, color: AppColors.red),
-                      ],
-                      if (isMe) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: AppColors.orange.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('você',
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.orange)),
+                    ),
+                    if (isGovernor) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: zon.brand,
+                          borderRadius: BorderRadius.circular(Corners.pill),
                         ),
-                      ],
+                        child: Icon(LucideIcons.crown,
+                            size: 10, color: zon.onBrand),
+                      ),
+                    ],
+                    if (isMe) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: zon.brand.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(Corners.pill),
+                        ),
+                        child: Text('você',
+                            style: AppText.caption.copyWith(
+                                fontSize: 10, color: zon.brand)),
+                      ),
+                    ],
+                  ],
+                ),
+                if (entry.classes.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final c in entry.classes)
+                        GameChip(
+                          label: _classLabels[c] ?? c,
+                          icon: classIcon(c),
+                          color: kClassColors[c] ?? zon.territory,
+                          mode: GameChipMode.tonal,
+                        ),
                     ],
                   ),
-                  if (entry.classes.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final c in entry.classes) _ClassChip(classType: c),
-                      ],
-                    ),
-                  ],
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Icon(LucideIcons.zap, size: 14, color: AppColors.blue),
-                const SizedBox(height: 2),
-                Text(
-                  entry.effectiveInfluence.toStringAsFixed(0),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
-                ),
               ],
             ),
-            if (onSendBonus != null) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Enviar bônus de tempo',
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(LucideIcons.timer, color: AppColors.orange),
-                onPressed: onSendBonus,
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Icon(LucideIcons.zap, size: 14, color: zon.info),
+              const SizedBox(height: 2),
+              Text(
+                entry.effectiveInfluence.toStringAsFixed(0),
+                style: AppText.numeric.copyWith(fontSize: 16),
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ClassChip extends StatelessWidget {
-  const _ClassChip({required this.classType});
-  final String classType;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.classColors[classType] ?? AppColors.brown;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(classIcon(classType), size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            _classLabels[classType] ?? classType,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: color),
           ),
+          if (onSendBonus != null) ...[
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Enviar bônus de tempo',
+              child: GestureDetector(
+                onTap: () {
+                  GameHaptics.tap();
+                  onSendBonus!();
+                },
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: zon.brand.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      Icon(LucideIcons.timer, size: 17, color: zon.brand),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
+/// Hero da zona: ícone + nome em destaque e a linha do governador
+/// (avatar com anel + coroa em mini-pill, como no mapa).
 class _Header extends StatelessWidget {
-  const _Header({required this.detail});
+  const _Header({required this.detail, required this.governor});
+
   final TerritoryDetail detail;
+  final RankingEntry? governor;
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     final color = AppColors.zoneColor(detail.color);
     final hasBg =
         detail.backgroundUrl != null && detail.backgroundUrl!.isNotEmpty;
+    final fg = hasBg ? zon.onBrand : zon.onSurface;
 
-    return ComicPanel(
+    return GamePanel(
       padding: EdgeInsets.zero,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.card),
+        borderRadius: BorderRadius.circular(Corners.lg),
         child: Stack(
           children: [
             if (hasBg)
@@ -667,30 +713,88 @@ class _Header extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              color: hasBg ? Colors.transparent : color.withValues(alpha: 0.18),
-              child: Row(
+              color: hasBg ? Colors.transparent : color.withValues(alpha: 0.16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(zoneIcon(detail.iconName),
-                        color: AppColors.white, size: 26),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      detail.displayName,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: hasBg ? AppColors.white : AppColors.ink,
+                  Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(zoneIcon(detail.iconName),
+                            color: zon.onBrand, size: 26),
                       ),
-                    ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          detail.displayName,
+                          style: AppText.headline.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: fg,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 12),
+                  if (governor != null)
+                    Row(
+                      children: [
+                        AvatarRing(
+                          imageUrl: governor!.avatarUrl,
+                          initial: governor!.name.isNotEmpty
+                              ? governor!.name[0]
+                              : '?',
+                          size: 36,
+                          ringColor: color,
+                          ringWidth: 2,
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: zon.brand,
+                            borderRadius: BorderRadius.circular(Corners.pill),
+                            border: Border.all(color: zon.surface, width: 1.5),
+                          ),
+                          child: Icon(LucideIcons.crown,
+                              size: 10, color: zon.onBrand),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            governor!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.bodyStrong.copyWith(color: fg),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Icon(LucideIcons.crown,
+                            size: 16, color: hasBg ? zon.onBrand : color),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Zona livre — conquiste este território!',
+                            style: AppText.caption.copyWith(
+                              color: hasBg
+                                  ? zon.onBrand.withValues(alpha: 0.85)
+                                  : zon.onSurfaceMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -700,4 +804,3 @@ class _Header extends StatelessWidget {
     );
   }
 }
-

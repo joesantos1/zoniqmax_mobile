@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models.dart';
 import '../../theme.dart';
@@ -51,6 +52,7 @@ class _MemoryGameState extends State<MemoryGame> {
     if (widget.locked || _busy) return;
     if (_matched.contains(i) || _flipped.contains(i)) return;
 
+    GameHaptics.tap();
     setState(() => _flipped.add(i));
 
     if (_flipped.length == 2) {
@@ -67,9 +69,15 @@ class _MemoryGameState extends State<MemoryGame> {
             _busy = false;
             widget.answer.value = _pairs;
           });
-          if (_matched.length == _cards.length) widget.onComplete();
+          if (_matched.length == _cards.length) {
+            GameHaptics.celebrate();
+            widget.onComplete();
+          } else {
+            GameHaptics.correct();
+          }
         });
       } else {
+        GameHaptics.wrong();
         setState(() => _wrong.addAll([a, b]));
         Future.delayed(const Duration(milliseconds: 850), () {
           if (!mounted) return;
@@ -187,6 +195,7 @@ class _FlipCardState extends State<_FlipCard> with TickerProviderStateMixin {
           final shakeDx =
               math.sin(_shake.value * math.pi * 4) * 8 * (1 - _shake.value);
 
+          final zon = context.zon;
           return Transform.translate(
             offset: Offset(shakeDx, 0),
             child: Transform.scale(
@@ -201,14 +210,20 @@ class _FlipCardState extends State<_FlipCard> with TickerProviderStateMixin {
                         alignment: Alignment.center,
                         transform: Matrix4.identity()..rotateY(math.pi),
                         child: _face(
-                          bg: widget.matched ? AppColors.blue : AppColors.white,
-                          border: widget.wrong ? AppColors.red : AppColors.line,
+                          bg: widget.matched
+                              ? Color.alphaBlend(
+                                  zon.success.withValues(alpha: 0.14),
+                                  zon.surface)
+                              : zon.surface,
+                          border: widget.wrong
+                              ? zon.danger
+                              : (widget.matched ? zon.success : zon.outline),
                           back: false,
                         ),
                       )
                     : _face(
-                        bg: AppColors.orange,
-                        border: AppColors.orange,
+                        bg: zon.brand,
+                        border: zon.brandEdge,
                         back: true,
                       ),
               ),
@@ -224,25 +239,48 @@ class _FlipCardState extends State<_FlipCard> with TickerProviderStateMixin {
     required Color border,
     required bool back,
   }) {
+    final zon = context.zon;
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border, width: 1.6),
+        borderRadius: BorderRadius.circular(Corners.md),
+        border: Border.all(color: border, width: 2),
+        // edge inferior "chunky" (sombra dura) só no verso laranja
+        boxShadow: back
+            ? [
+                BoxShadow(
+                    color: zon.brandEdge,
+                    offset: const Offset(0, 2.5),
+                    blurRadius: 0),
+              ]
+            : null,
       ),
       alignment: Alignment.center,
       padding: const EdgeInsets.all(3),
       child: LayoutBuilder(
         builder: (context, c) {
           final s = c.biggest.shortestSide;
-          return back
-              ? Icon(Icons.question_mark,
-                  color: AppColors.ink, size: s * 0.5)
-              : Text(
-                  widget.value,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: s * 0.78, height: 1.0),
-                );
+          if (back) {
+            // hexágono branco da marca com "?" — verso das cartas
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(LucideIcons.hexagon,
+                    color: zon.onBrand.withValues(alpha: 0.9),
+                    size: s * 0.62),
+                Text(
+                  '?',
+                  style: AppText.numeric.copyWith(
+                      fontSize: s * 0.28, color: zon.onBrand),
+                ),
+              ],
+            );
+          }
+          return Text(
+            widget.value,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: s * 0.78, height: 1.0),
+          );
         },
       ),
     );

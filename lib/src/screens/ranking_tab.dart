@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -102,15 +101,29 @@ class _RankingTabState extends State<RankingTab> {
   }
 
   Widget _buildContent() {
+    final zon = context.zon;
     if (widget.territoryId == null) {
-      return const _EmptyTab(
-          text: 'Abra o mapa e escolha uma zona para ver o ranking.');
+      return const EmptyState(
+        icon: LucideIcons.map,
+        title: 'Escolha uma zona no mapa',
+        message: 'Toque numa zona do mapa para ver quem manda por lá.',
+      );
     }
     if (_loading && _detail == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null && _detail == null) {
-      return Center(child: Text(_error!));
+      return EmptyState(
+        icon: LucideIcons.cloudOff,
+        color: zon.danger,
+        title: 'Ops, algo deu errado',
+        message: _error,
+        action: GameButton(
+          label: 'TENTAR DE NOVO',
+          icon: LucideIcons.refreshCw,
+          onPressed: _load,
+        ),
+      );
     }
     final d = _detail!;
     final myId = widget.api.currentUserId;
@@ -123,54 +136,47 @@ class _RankingTabState extends State<RankingTab> {
         ? 'Ordenado pela influência efetiva no território.'
         : 'Ordenado pela pontuação de ${_classLabels[_view] ?? _view}.';
 
-    final rows = <Widget>[];
+    final items = <_RankItem>[];
     if (byInfluence) {
-      if (d.generalRanking.isEmpty) {
-        rows.add(const _Hint('Ninguém pontuou aqui ainda.'));
-      } else {
-        for (final e in d.generalRanking) {
-          rows.add(_rankRow(
-            position: e.position,
-            userId: e.userId,
-            name: e.name,
-            avatarUrl: e.avatarUrl,
-            value: e.effectiveInfluence,
-            unit: 'inf.',
-            isMe: e.userId == myId,
-            isGovernor: e.userId == d.governorUserId,
-          ));
-        }
+      for (final e in d.generalRanking) {
+        items.add(_RankItem(
+          position: e.position,
+          userId: e.userId,
+          name: e.name,
+          avatarUrl: e.avatarUrl,
+          value: e.effectiveInfluence,
+          unit: 'inf.',
+          isMe: e.userId == myId,
+          isGovernor: e.userId == d.governorUserId,
+        ));
       }
     } else {
-      final list = d.rankingByClass[_view] ?? const [];
-      if (list.isEmpty) {
-        rows.add(const _Hint('Ninguém pontuou nesta classe ainda.'));
-      } else {
-        for (final e in list) {
-          rows.add(_rankRow(
-            position: e.position,
-            userId: e.userId,
-            name: e.name,
-            avatarUrl: e.avatarUrl,
-            value: e.score,
-            unit: 'pts',
-            isMe: e.userId == myId,
-            isGovernor: false,
-          ));
-        }
+      for (final e in d.rankingByClass[_view] ?? const <ClassRankingEntry>[]) {
+        items.add(_RankItem(
+          position: e.position,
+          userId: e.userId,
+          name: e.name,
+          avatarUrl: e.avatarUrl,
+          value: e.score,
+          unit: 'pts',
+          isMe: e.userId == myId,
+          isGovernor: false,
+        ));
       }
     }
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      color: AppColors.orange,
+      color: zon.brand,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Território: 🗺️${d.displayName}',
-              style:
-                  const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          SectionHeader(
+            icon: LucideIcons.map,
+            title: d.displayName,
+            color: zon.territory,
+          ),
           const SizedBox(height: 12),
           // seletor: Influência + classes
           SingleChildScrollView(
@@ -185,9 +191,24 @@ class _RankingTabState extends State<RankingTab> {
           ),
           const SizedBox(height: 6),
           Text(caption,
-              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-          const SizedBox(height: 12),
-          ...rows,
+              style: AppText.caption.copyWith(color: zon.onSurfaceMuted)),
+          const SizedBox(height: 16),
+          if (items.isEmpty)
+            EmptyState(
+              icon: LucideIcons.trophy,
+              title: byInfluence
+                  ? 'Ninguém pontuou aqui ainda'
+                  : 'Ninguém pontuou nesta classe ainda',
+              message: 'Que tal ser quem estreia o placar?',
+            )
+          else ...[
+            _Podium(
+              items: items.take(3).toList(),
+              onTap: (it) => _openPlayer(it.userId, it.name),
+            ),
+            const SizedBox(height: 16),
+            for (final it in items.skip(3)) _rankRow(it),
+          ],
         ],
       ),
     );
@@ -195,98 +216,68 @@ class _RankingTabState extends State<RankingTab> {
 
   /// Chip de seleção da visão do ranking (influência / classe).
   Widget _viewChip(String value, String label, IconData icon) {
-    final selected = _view == value;
     final color = value == 'INFLUENCIA'
-        ? AppColors.orange
-        : (AppColors.classColors[value] ?? AppColors.brown);
+        ? context.zon.brand
+        : (kClassColors[value] ?? context.zon.territory);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
+      child: GameSelectChip(
+        label: label,
+        icon: icon,
+        color: color,
+        selected: _view == value,
         onTap: () => setState(() => _view = value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? color : AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-                color: selected ? color : AppColors.line, width: 1.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 15,
-                  color: selected ? AppColors.white : AppColors.muted),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: selected ? AppColors.white : AppColors.ink)),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  /// Linha do ranking com foto (ou placeholder), posição, nome e valor.
-  Widget _rankRow({
-    required int position,
-    required String userId,
-    required String name,
-    required String? avatarUrl,
-    required double value,
-    required String unit,
-    required bool isMe,
-    required bool isGovernor,
-  }) {
-    final hasPhoto = avatarUrl != null && avatarUrl.isNotEmpty;
+  /// Linha do ranking (4º lugar em diante): badge de posição, avatar, nome e valor.
+  Widget _rankRow(_RankItem it) {
+    final zon = context.zon;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: ComicPanel(
-        color: isMe ? AppColors.orange : AppColors.white,
+      child: GamePanel(
+        color: it.isMe
+            ? Color.alphaBlend(zon.brand.withValues(alpha: 0.10), zon.surface)
+            : null,
+        borderColor: it.isMe ? zon.brand : null,
         padding: const EdgeInsets.all(10),
-        onTap: () => _openPlayer(userId, name),
+        onTap: () => _openPlayer(it.userId, it.name),
         child: Row(
           children: [
-            SizedBox(
-              width: 22,
-              child: Text('#$position',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      color: AppColors.muted)),
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: zon.surfaceAlt,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text('${it.position}',
+                  style: AppText.label.copyWith(fontWeight: FontWeight.w800)),
             ),
-            const SizedBox(width: 6),
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.paperDark,
-              backgroundImage:
-                  hasPhoto ? CachedNetworkImageProvider(avatarUrl) : null,
-              child: hasPhoto
-                  ? null
-                  : Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, color: AppColors.ink)),
+            const SizedBox(width: 10),
+            AvatarRing(
+              imageUrl: it.avatarUrl,
+              initial: it.name.isNotEmpty ? it.name[0] : '?',
+              size: 36,
+              ringColor: it.isMe ? zon.brand : zon.outline,
+              ringWidth: 2,
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(name,
+              child: Text(it.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                  style: AppText.bodyStrong),
             ),
-            if (isGovernor)
+            if (it.isGovernor)
               const Padding(
                 padding: EdgeInsets.only(right: 8),
-                child:
-                    Icon(LucideIcons.crown, color: AppColors.orange, size: 18),
+                child: _CrownPill(),
               ),
-            Text('${value.toStringAsFixed(0)} $unit',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Text('${it.value.toStringAsFixed(0)} ${it.unit}',
+                style: AppText.numeric.copyWith(fontSize: 15)),
           ],
         ),
       ),
@@ -294,24 +285,163 @@ class _RankingTabState extends State<RankingTab> {
   }
 }
 
-class _Hint extends StatelessWidget {
-  const _Hint(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(text),
-      );
+/// Entrada normalizada do ranking (influência ou pontos de classe).
+class _RankItem {
+  const _RankItem({
+    required this.position,
+    required this.userId,
+    required this.name,
+    required this.avatarUrl,
+    required this.value,
+    required this.unit,
+    required this.isMe,
+    required this.isGovernor,
+  });
+
+  final int position;
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final double value;
+  final String unit;
+  final bool isMe;
+  final bool isGovernor;
 }
 
-class _EmptyTab extends StatelessWidget {
-  const _EmptyTab({required this.text});
-  final String text;
+/// Pódio do top-3: 1º ao centro (maior, anel da marca e coroa),
+/// 2º à esquerda e 3º à direita.
+class _Podium extends StatelessWidget {
+  const _Podium({required this.items, required this.onTap});
+
+  final List<_RankItem> items;
+  final void Function(_RankItem) onTap;
+
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(text, textAlign: TextAlign.center),
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    final first = items.isNotEmpty ? items[0] : null;
+    final second = items.length > 1 ? items[1] : null;
+    final third = items.length > 2 ? items[2] : null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: second == null
+              ? const SizedBox.shrink()
+              : _PodiumSpot(
+                  item: second,
+                  size: 48,
+                  ringColor: zon.onSurfaceMuted,
+                  onTap: () => onTap(second),
+                ),
         ),
-      );
+        Expanded(
+          child: first == null
+              ? const SizedBox.shrink()
+              : _PodiumSpot(
+                  item: first,
+                  size: 64,
+                  ringColor: zon.brand,
+                  crowned: true,
+                  onTap: () => onTap(first),
+                ),
+        ),
+        Expanded(
+          child: third == null
+              ? const SizedBox.shrink()
+              : _PodiumSpot(
+                  item: third,
+                  size: 48,
+                  ringColor: zon.territory,
+                  onTap: () => onTap(third),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Um lugar do pódio: avatar com anel, posição, nome e valor.
+class _PodiumSpot extends StatelessWidget {
+  const _PodiumSpot({
+    required this.item,
+    required this.size,
+    required this.ringColor,
+    required this.onTap,
+    this.crowned = false,
+  });
+
+  final _RankItem item;
+  final double size;
+  final Color ringColor;
+  final VoidCallback onTap;
+  final bool crowned;
+
+  @override
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        GameHaptics.tap();
+        onTap();
+      },
+      child: Column(
+        children: [
+          SizedBox(
+            height: size + 10,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.bottomCenter,
+              children: [
+                Positioned(
+                  bottom: 0,
+                  child: AvatarRing(
+                    imageUrl: item.avatarUrl,
+                    initial: item.name.isNotEmpty ? item.name[0] : '?',
+                    size: size,
+                    ringColor: ringColor,
+                  ),
+                ),
+                if (crowned) const Positioned(top: -4, child: _CrownPill()),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text('${item.position}º',
+              style: AppText.caption.copyWith(color: zon.onSurfaceMuted)),
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(color: zon.onSurface),
+          ),
+          Text('${item.value.toStringAsFixed(0)} ${item.unit}',
+              style: AppText.numeric.copyWith(fontSize: 14)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mini-pill laranja com coroa (governador / 1º lugar), estilo sticker.
+class _CrownPill extends StatelessWidget {
+  const _CrownPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final zon = context.zon;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: zon.brand,
+        borderRadius: BorderRadius.circular(Corners.pill),
+        border: Border.all(color: zon.surface, width: 1.5),
+        boxShadow: const [Shadows.soft],
+      ),
+      child: Icon(LucideIcons.crown, size: 10, color: zon.onBrand),
+    );
+  }
 }

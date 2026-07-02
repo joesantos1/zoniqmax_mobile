@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models.dart';
 import '../../theme.dart';
@@ -38,6 +39,7 @@ class _OrderingGameState extends State<OrderingGame> {
 
   void _onReorderItem(int oldIndex, int newIndex) {
     if (widget.locked) return;
+    GameHaptics.tap();
     // onReorderItem já entrega o newIndex ajustado (sem o "-1" manual)
     setState(() {
       final item = _items.removeAt(oldIndex);
@@ -48,12 +50,30 @@ class _OrderingGameState extends State<OrderingGame> {
 
   @override
   Widget build(BuildContext context) {
+    final zon = context.zon;
     return ReorderableListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       // desliga os handles padrão (que usam long-press com atraso)
       buildDefaultDragHandles: false,
       onReorderItem: _onReorderItem,
+      // item em arraste: cresce levemente e ganha sombra elevada
+      proxyDecorator: (child, index, animation) => AnimatedBuilder(
+        animation: animation,
+        builder: (context, _) {
+          final t = Curves.easeOut.transform(animation.value);
+          return Transform.scale(
+            scale: 1 + 0.03 * t,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Corners.lg),
+                boxShadow: const [Shadows.lifted],
+              ),
+              child: child,
+            ),
+          );
+        },
+      ),
       children: [
         for (int i = 0; i < _items.length; i++)
           // arraste imediato (sem espera) a partir de qualquer ponto do item
@@ -63,33 +83,35 @@ class _OrderingGameState extends State<OrderingGame> {
             enabled: !widget.locked,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: ComicPanel(
+              child: GamePanel(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: AppColors.brown,
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: zon.territory.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      alignment: Alignment.center,
                       child: Text(
                         '${i + 1}',
-                        style: const TextStyle(
-                          color: AppColors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
+                        style: AppText.label
+                            .copyWith(color: zon.territory, fontSize: 13),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         _items[i]['label'] as String,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 16),
+                        style: AppText.bodyStrong.copyWith(fontSize: 16),
                       ),
                     ),
                     if (!widget.locked)
-                      const Icon(Icons.drag_indicator, color: AppColors.muted),
+                      Icon(LucideIcons.gripVertical,
+                          color: zon.onSurfaceMuted, size: 20),
                   ],
                 ),
               ),

@@ -147,12 +147,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Navigator.pop(context, _changed);
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('CONFIGURAÇÕES')),
+        appBar: AppBar(title: const Text('Configurações')),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const _Section('MEUS DADOS'),
-            ComicPanel(
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child:
+                  SectionHeader(icon: LucideIcons.user, title: 'Meus dados'),
+            ),
+            GamePanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -171,13 +175,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   if (_nickMsg != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4, left: 4),
-                      child: Text(
-                        _nickMsg!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _nickFree ? AppColors.green : AppColors.red,
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: GameChip(
+                          label: _nickMsg!,
+                          mode: GameChipMode.tonal,
+                          icon: _nickFree
+                              ? LucideIcons.check
+                              : LucideIcons.circleAlert,
+                          color: _nickFree
+                              ? context.zon.success
+                              : context.zon.danger,
                         ),
                       ),
                     ),
@@ -189,19 +198,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       hintText: widget.me.email,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  FilledButton(
+                  const SizedBox(height: 14),
+                  GameButton(
+                    label: 'SALVAR PERFIL',
+                    icon: LucideIcons.save,
+                    expanded: true,
+                    loading: _savingName,
                     onPressed: _savingName ? null : _saveProfile,
-                    child: _savingName
-                        ? const _Spin()
-                        : const Text('SALVAR PERFIL'),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            const _Section('TROCAR SENHA'),
-            ComicPanel(
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: SectionHeader(
+                  icon: LucideIcons.lock, title: 'Trocar senha'),
+            ),
+            GamePanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -224,52 +238,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     decoration:
                         const InputDecoration(labelText: 'Confirmar nova senha'),
                   ),
-                  const SizedBox(height: 12),
-                  FilledButton(
+                  const SizedBox(height: 14),
+                  GameButton(
+                    label: 'ALTERAR SENHA',
+                    icon: LucideIcons.keyRound,
+                    variant: GameButtonVariant.secondary,
+                    expanded: true,
+                    loading: _savingPass,
                     onPressed: _savingPass ? null : _changePassword,
-                    child: _savingPass
-                        ? const _Spin()
-                        : const Text('ALTERAR SENHA'),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            OutlinedButton.icon(
+            GameButton(
+              label: 'SAIR DA CONTA',
+              icon: LucideIcons.logOut,
+              variant: GameButtonVariant.danger,
+              expanded: true,
               onPressed: _logout,
-              icon: const Icon(LucideIcons.logOut, color: AppColors.red, size: 18),
-              label: const Text('SAIR DA CONTA',
-                  style: TextStyle(color: AppColors.red)),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.red, width: 2.5),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class _Section extends StatelessWidget {
-  const _Section(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 1)),
-      );
-}
-
-class _Spin extends StatelessWidget {
-  const _Spin();
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-        height: 20,
-        width: 20,
-        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.ink),
-      );
 }

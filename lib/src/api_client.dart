@@ -201,6 +201,17 @@ class ApiClient {
     _decode(res);
   }
 
+  /// Resumo dos envios do doador: bônus pendentes + orçamento diário
+  /// (limite reseta às 00:00).
+  Future<OutgoingBonusSummary> outgoingBonuses() async {
+    final res = await _client.get(
+      _uri('/bonuses/outgoing'),
+      headers: _headers(auth: true),
+    );
+    return OutgoingBonusSummary.fromJson(
+        _decode(res) as Map<String, dynamic>);
+  }
+
   // ---- Desafios ----
 
   Future<Challenge> nextChallenge({
