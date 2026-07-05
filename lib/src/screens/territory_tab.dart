@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/stat_tile.dart';
 import 'challenge_setup_screen.dart';
 import 'player_profile_screen.dart';
+import 'record_duel_screen.dart';
 import 'tab_header.dart';
 import 'territory_customize_screen.dart';
 
@@ -311,6 +312,51 @@ class _TerritoryTabState extends State<TerritoryTab> {
     }
   }
 
+  /// Desafia o jogador para um duelo Quebra de Recordes (confirmação + criação).
+  Future<void> _startRecordDuel(RankingEntry e) async {
+    final territoryId = widget.territoryId;
+    if (territoryId == null) return;
+
+    final zon = context.zon;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Desafiar ${e.name}?'),
+        content: Text(
+          'Quebra de Recordes: você joga os desafios em que ${e.name} pontuou '
+          'e precisa SUPERAR os recordes de XP. Melhor de até 7 rodadas — '
+          'sair no meio conta como derrota!',
+          style: AppText.body.copyWith(color: zon.onSurfaceMuted),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          GameButton(
+            label: 'DESAFIAR',
+            icon: LucideIcons.swords,
+            size: GameButtonSize.sm,
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      final duel = await widget.api.createRecordDuel(e.userId, territoryId);
+      if (!mounted) return;
+      await Navigator.of(context).push(appRoute(
+        RecordDuelScreen(api: widget.api, initialDuel: duel),
+      ));
+      if (mounted) _reload();
+    } on ApiException catch (err) {
+      _snack(err.message);
+    } catch (_) {
+      _snack('Falha ao criar o duelo.');
+    }
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -496,6 +542,9 @@ class _TerritoryTabState extends State<TerritoryTab> {
                   onSendBonus: e.userId == myId
                       ? null
                       : () => _sendBonus(e),
+                  onDuel: e.userId == myId
+                      ? null
+                      : () => _startRecordDuel(e),
                 ),
               ),
         ],
@@ -534,6 +583,7 @@ class _PlayerRow extends StatelessWidget {
     required this.isMe,
     required this.onTap,
     this.onSendBonus,
+    this.onDuel,
   });
 
   final RankingEntry entry;
@@ -541,6 +591,7 @@ class _PlayerRow extends StatelessWidget {
   final bool isMe;
   final VoidCallback onTap;
   final VoidCallback? onSendBonus;
+  final VoidCallback? onDuel;
 
   @override
   Widget build(BuildContext context) {
@@ -670,6 +721,28 @@ class _PlayerRow extends StatelessWidget {
                   ),
                   child:
                       Icon(LucideIcons.timer, size: 17, color: zon.brand),
+                ),
+              ),
+            ),
+          ],
+          if (onDuel != null) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Duelo: quebra de recordes',
+              child: GestureDetector(
+                onTap: () {
+                  GameHaptics.tap();
+                  onDuel!();
+                },
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: zon.danger.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      Icon(LucideIcons.swords, size: 17, color: zon.danger),
                 ),
               ),
             ),

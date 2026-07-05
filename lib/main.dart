@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'src/api_client.dart';
+import 'src/referral_links.dart';
 import 'src/theme.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/home_shell.dart';
@@ -20,6 +24,48 @@ class ZonIQmaxApp extends StatefulWidget {
 class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
   final ApiClient _api = ApiClient();
   late final Future<String?> _tokenFuture = _api.loadToken();
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _referralSub;
+  String? _pendingReferralCode;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrapReferralCode();
+    _listenDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    _referralSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _bootstrapReferralCode() async {
+    final cached = await readPendingReferralCode();
+    if (mounted) {
+      setState(() => _pendingReferralCode = cached);
+    }
+  }
+
+  Future<void> _listenDeepLinks() async {
+    final initial = await _appLinks.getInitialLink();
+    await _handleIncomingReferralUri(initial);
+    _referralSub = _appLinks.uriLinkStream.listen((uri) {
+      _handleIncomingReferralUri(uri);
+    });
+  }
+
+  Future<void> _handleIncomingReferralUri(Uri? uri) async {
+    if (uri == null || !isReferralUri(uri)) return;
+    final code = extractReferralCodeFromUri(uri);
+    if (code == null) return;
+
+    await savePendingReferralCode(code);
+    if (mounted) {
+      setState(() => _pendingReferralCode = code);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +80,12 @@ class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
             return const _BootScreen();
           }
           final hasToken = snapshot.data != null;
-          return hasToken ? HomeShell(api: _api) : LoginScreen(api: _api);
+          return hasToken
+              ? HomeShell(api: _api)
+              : LoginScreen(
+                  api: _api,
+                  initialReferralCode: _pendingReferralCode,
+                );
         },
       ),
     );

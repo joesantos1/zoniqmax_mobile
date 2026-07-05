@@ -40,6 +40,10 @@ class _TrueFalseGameState extends State<TrueFalseGame>
   Animation<Offset>? _anim; // voo para fora ou retorno ao centro
   bool? _pending; // resposta a registrar quando o voo terminar
 
+  /// Largura da área dos cartões, capturada pelo LayoutBuilder no build
+  /// (context.size não pode ser lido durante o build).
+  double _areaWidth = 320;
+
   bool get _animating => _ctrl.isAnimating;
   bool get _done => _index >= _afirmacoes.length;
 
@@ -65,7 +69,7 @@ class _TrueFalseGameState extends State<TrueFalseGame>
 
   void _onPanEnd(DragEndDetails d) {
     if (widget.locked || _animating || _done) return;
-    final w = context.size?.width ?? 320;
+    final w = _areaWidth;
     if (_drag.dx.abs() > w * 0.35) {
       _flyOut(_drag.dx > 0);
     } else {
@@ -75,7 +79,7 @@ class _TrueFalseGameState extends State<TrueFalseGame>
 
   /// Anima o cartão para fora da tela e registra a resposta ao terminar.
   void _flyOut(bool value) {
-    final w = context.size?.width ?? 320;
+    final w = _areaWidth;
     _pending = value;
     GameHaptics.tap();
     _anim = Tween<Offset>(
@@ -152,40 +156,45 @@ class _TrueFalseGameState extends State<TrueFalseGame>
                   child: Icon(LucideIcons.circleCheck,
                       size: 48, color: zon.success),
                 )
-              : AnimatedBuilder(
-                  animation: _ctrl,
-                  builder: (context, _) {
-                    final offset = _anim?.value ?? _drag;
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // cartão de trás (próxima afirmação)
-                        if (_index + 1 < total)
-                          Transform.scale(
-                            scale: 0.94,
-                            child: Transform.translate(
-                              offset: const Offset(0, 10),
-                              child: _card(_afirmacoes[_index + 1],
-                                  interactive: false, offset: Offset.zero),
+              : LayoutBuilder(builder: (context, constraints) {
+                  // captura a largura para o limiar do swipe e os overlays
+                  // (context.size não pode ser lido durante o build)
+                  _areaWidth = constraints.maxWidth;
+                  return AnimatedBuilder(
+                    animation: _ctrl,
+                    builder: (context, _) {
+                      final offset = _anim?.value ?? _drag;
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // cartão de trás (próxima afirmação)
+                          if (_index + 1 < total)
+                            Transform.scale(
+                              scale: 0.94,
+                              child: Transform.translate(
+                                offset: const Offset(0, 10),
+                                child: _card(_afirmacoes[_index + 1],
+                                    interactive: false, offset: Offset.zero),
+                              ),
+                            ),
+                          // cartão do topo (arrastável)
+                          Transform.translate(
+                            offset: offset,
+                            child: Transform.rotate(
+                              angle: offset.dx / 340,
+                              child: GestureDetector(
+                                onPanUpdate: _onPanUpdate,
+                                onPanEnd: _onPanEnd,
+                                child: _card(_afirmacoes[_index],
+                                    interactive: true, offset: offset),
+                              ),
                             ),
                           ),
-                        // cartão do topo (arrastável)
-                        Transform.translate(
-                          offset: offset,
-                          child: Transform.rotate(
-                            angle: offset.dx / 340,
-                            child: GestureDetector(
-                              onPanUpdate: _onPanUpdate,
-                              onPanEnd: _onPanEnd,
-                              child: _card(_afirmacoes[_index],
-                                  interactive: true, offset: offset),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                        ],
+                      );
+                    },
+                  );
+                }),
         ),
         const SizedBox(height: 12),
         // botões de apoio (mesma resposta do swipe)
@@ -218,7 +227,7 @@ class _TrueFalseGameState extends State<TrueFalseGame>
 
   Widget _card(String text, {required bool interactive, required Offset offset}) {
     final zon = context.zon;
-    final w = context.size?.width ?? 320;
+    final w = _areaWidth;
     final strength = (offset.dx.abs() / (w * 0.35)).clamp(0.0, 1.0);
     final right = offset.dx > 0;
     final accent = right ? zon.success : zon.danger;

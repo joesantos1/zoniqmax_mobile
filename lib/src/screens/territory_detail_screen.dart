@@ -6,7 +6,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/stat_tile.dart';
 import 'challenge_screen.dart';
-import 'duel_screen.dart';
+import 'duel_mode_screen.dart';
 
 /// Detalhe do território: ranking geral (Governador) e rankings por classe.
 class TerritoryDetailScreen extends StatefulWidget {
@@ -143,9 +143,10 @@ class _TerritoryDetailScreenState extends State<TerritoryDetailScreen> {
                       color: zon.danger,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => DuelScreen(
+                          builder: (_) => DuelModeScreen(
                             api: widget.api,
                             territoryId: widget.territory.id,
+                            territoryName: widget.territory.name,
                           ),
                         ),
                       ).then((_) => _reload()),

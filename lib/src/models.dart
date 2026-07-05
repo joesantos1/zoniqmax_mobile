@@ -93,9 +93,8 @@ class MapTerritory {
   });
 
   bool get isGoverned => governorUserId != null;
-  String get displayName => (customName != null && customName!.isNotEmpty)
-      ? customName!
-      : name;
+  String get displayName =>
+      (customName != null && customName!.isNotEmpty) ? customName! : name;
 
   /// Chave de cache: cellKey (identidade global da célula) ou o id como fallback.
   String get cacheKey => cellKey ?? id;
@@ -239,9 +238,8 @@ class TerritoryDetail {
     required this.rankingByClass,
   });
 
-  String get displayName => (customName != null && customName!.isNotEmpty)
-      ? customName!
-      : name;
+  String get displayName =>
+      (customName != null && customName!.isNotEmpty) ? customName! : name;
 
   factory TerritoryDetail.fromJson(Map<String, dynamic> json) {
     final general = (json['generalRanking'] as List<dynamic>? ?? [])
@@ -330,7 +328,8 @@ class ChallengeOption {
     required this.solvedCount,
   });
 
-  factory ChallengeOption.fromJson(Map<String, dynamic> json) => ChallengeOption(
+  factory ChallengeOption.fromJson(Map<String, dynamic> json) =>
+      ChallengeOption(
         area: json['area'] as String,
         theme: json['theme'] as String?,
         difficulty: (json['difficulty'] as num).toInt(),
@@ -522,9 +521,8 @@ class TerritoryParticipation {
     required this.isGovernor,
   });
 
-  String get displayName => (customName != null && customName!.isNotEmpty)
-      ? customName!
-      : name;
+  String get displayName =>
+      (customName != null && customName!.isNotEmpty) ? customName! : name;
 
   factory TerritoryParticipation.fromJson(Map<String, dynamic> json) {
     return TerritoryParticipation(
@@ -568,9 +566,8 @@ class AttemptSummary {
         area: json['area'] as String,
         success: json['success'] as bool? ?? false,
         scoreAwarded: (json['scoreAwarded'] as num?)?.toDouble() ?? 0,
-        createdAt:
-            DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
-                DateTime.fromMillisecondsSinceEpoch(0),
+        createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
       );
 }
 
@@ -633,6 +630,12 @@ class Me {
   final String name;
   final String? nickname;
   final String email;
+  final bool emailVerified;
+  final String referralCode;
+  final String? referralLink;
+  final String? referredByName;
+  final String? referredByCode;
+  final ReferralStats referralStats;
   final String? avatarUrl;
   final List<KnowledgeXp> knowledgeXp;
   final int totalAttempts;
@@ -644,6 +647,12 @@ class Me {
     required this.name,
     required this.nickname,
     required this.email,
+    this.emailVerified = false,
+    required this.referralCode,
+    this.referralLink,
+    this.referredByName,
+    this.referredByCode,
+    required this.referralStats,
     required this.avatarUrl,
     required this.knowledgeXp,
     required this.totalAttempts,
@@ -676,11 +685,36 @@ class Me {
       name: json['name'] as String,
       nickname: json['nickname'] as String?,
       email: json['email'] as String,
+      emailVerified: json['emailVerified'] as bool? ?? false,
+      referralCode: json['referralCode'] as String? ?? '',
+      referralLink: json['referralLink'] as String?,
+      referredByName: json['referredByName'] as String?,
+      referredByCode: json['referredByCode'] as String?,
+      referralStats: ReferralStats.fromJson(
+        json['referralStats'] as Map<String, dynamic>? ?? const {},
+      ),
       avatarUrl: json['avatarUrl'] as String?,
       knowledgeXp: xp,
       totalAttempts: (json['totalAttempts'] as num?)?.toInt() ?? 0,
       successfulAttempts: (json['successfulAttempts'] as num?)?.toInt() ?? 0,
       territories: terrs,
+    );
+  }
+}
+
+class ReferralStats {
+  final int totalReferrals;
+  final double recruiterXpAwarded;
+
+  ReferralStats({
+    required this.totalReferrals,
+    required this.recruiterXpAwarded,
+  });
+
+  factory ReferralStats.fromJson(Map<String, dynamic> json) {
+    return ReferralStats(
+      totalReferrals: (json['totalReferrals'] as num?)?.toInt() ?? 0,
+      recruiterXpAwarded: (json['recruiterXpAwarded'] as num?)?.toDouble() ?? 0,
     );
   }
 }
@@ -739,10 +773,153 @@ class OutgoingBonusSummary {
       OutgoingBonusSummary(
         dailyLimitSeconds: (json['dailyLimitSeconds'] as num).toInt(),
         usedTodaySeconds: (json['usedTodaySeconds'] as num).toInt(),
-        remainingTodaySeconds:
-            (json['remainingTodaySeconds'] as num).toInt(),
+        remainingTodaySeconds: (json['remainingTodaySeconds'] as num).toInt(),
         pending: (json['pending'] as List<dynamic>? ?? [])
             .map((e) => PendingBonus.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+}
+
+/// Jogador em um duelo (dados públicos mínimos).
+class DuelPlayer {
+  final String id;
+  final String name;
+  final String? avatarUrl;
+
+  DuelPlayer({required this.id, required this.name, this.avatarUrl});
+
+  factory DuelPlayer.fromJson(Map<String, dynamic> json) => DuelPlayer(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        avatarUrl: json['avatarUrl'] as String?,
+      );
+}
+
+/// Rodada de um duelo de quebra de recordes.
+class RecordDuelRound {
+  final int order;
+  final String area;
+  final int difficulty;
+  final double targetScore;
+  final double? challengerScore;
+  final bool? wonByChallenger; // null = ainda não jogada
+
+  RecordDuelRound({
+    required this.order,
+    required this.area,
+    required this.difficulty,
+    required this.targetScore,
+    required this.challengerScore,
+    required this.wonByChallenger,
+  });
+
+  factory RecordDuelRound.fromJson(Map<String, dynamic> json) =>
+      RecordDuelRound(
+        order: (json['order'] as num).toInt(),
+        area: json['area'] as String,
+        difficulty: (json['difficulty'] as num).toInt(),
+        targetScore: (json['targetScore'] as num).toDouble(),
+        challengerScore: (json['challengerScore'] as num?)?.toDouble(),
+        wonByChallenger: json['wonByChallenger'] as bool?,
+      );
+}
+
+/// Duelo de quebra de recordes: corrida assíncrona contra os recordes do
+/// defensor (melhor de N rodadas).
+class RecordDuel {
+  final String id;
+  final String
+      status; // EM_ANDAMENTO | VITORIA_DESAFIANTE | VITORIA_DEFENSOR | ABANDONADO
+  final String territoryId;
+  final int roundsTotal;
+  final int winsNeeded;
+  final int challengerWins;
+  final int defenderWins;
+  final int currentRound;
+  final DuelPlayer challenger;
+  final DuelPlayer defender;
+  final List<RecordDuelRound> rounds;
+  final Challenge? currentChallenge; // desafio da rodada atual (sanitizado)
+  final String? territoryName; // presente só na listagem "meus duelos"
+  final DateTime? createdAt;
+
+  RecordDuel({
+    required this.id,
+    required this.status,
+    required this.territoryId,
+    required this.roundsTotal,
+    required this.winsNeeded,
+    required this.challengerWins,
+    required this.defenderWins,
+    required this.currentRound,
+    required this.challenger,
+    required this.defender,
+    required this.rounds,
+    required this.currentChallenge,
+    this.territoryName,
+    this.createdAt,
+  });
+
+  bool get inProgress => status == 'EM_ANDAMENTO';
+
+  factory RecordDuel.fromJson(Map<String, dynamic> json) => RecordDuel(
+        id: json['id'] as String,
+        status: json['status'] as String,
+        territoryId: json['territoryId'] as String? ?? '',
+        roundsTotal: (json['roundsTotal'] as num).toInt(),
+        winsNeeded: (json['winsNeeded'] as num?)?.toInt() ??
+            ((json['roundsTotal'] as num).toInt() ~/ 2) + 1,
+        challengerWins: (json['challengerWins'] as num).toInt(),
+        defenderWins: (json['defenderWins'] as num).toInt(),
+        currentRound: (json['currentRound'] as num?)?.toInt() ?? 1,
+        challenger:
+            DuelPlayer.fromJson(json['challenger'] as Map<String, dynamic>),
+        defender:
+            DuelPlayer.fromJson(json['defender'] as Map<String, dynamic>),
+        rounds: (json['rounds'] as List<dynamic>? ?? [])
+            .map((e) => RecordDuelRound.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        currentChallenge: json['currentChallenge'] != null
+            ? Challenge.fromJson(
+                json['currentChallenge'] as Map<String, dynamic>)
+            : null,
+        territoryName: json['territoryName'] as String?,
+        createdAt: json['createdAt'] != null
+            ? DateTime.tryParse(json['createdAt'] as String)
+            : null,
+      );
+}
+
+/// Resultado de uma rodada de duelo de recordes.
+class RecordRoundResult {
+  final int order;
+  final double score;
+  final double targetScore;
+  final bool won;
+  final bool success;
+  final bool timedOut;
+  final RecordDuel duel;
+
+  RecordRoundResult({
+    required this.order,
+    required this.score,
+    required this.targetScore,
+    required this.won,
+    required this.success,
+    required this.timedOut,
+    required this.duel,
+  });
+
+  factory RecordRoundResult.fromJson(Map<String, dynamic> json) {
+    final round = json['round'] as Map<String, dynamic>;
+    return RecordRoundResult(
+      order: (round['order'] as num).toInt(),
+      score: (round['score'] as num).toDouble(),
+      targetScore: (round['targetScore'] as num).toDouble(),
+      won: round['won'] as bool,
+      success: round['success'] as bool? ?? false,
+      timedOut: round['timedOut'] as bool? ?? false,
+      duel: RecordDuel.fromJson(json['duel'] as Map<String, dynamic>),
+    );
+  }
 }

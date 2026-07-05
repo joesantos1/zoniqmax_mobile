@@ -1,18 +1,26 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api_client.dart';
+import '../referral_links.dart';
 import '../theme.dart';
+import 'forgot_password_screen.dart';
 import 'home_shell.dart';
 
 /// Tela de login / cadastro: hero laranja da marca no topo + formulário em
 /// cartão, com toggle segmentado entre entrar/criar conta.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.api});
+  const LoginScreen({
+    super.key,
+    required this.api,
+    this.initialReferralCode,
+  });
 
   final ApiClient api;
+  final String? initialReferralCode;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -24,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nickCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _referralCtrl = TextEditingController();
 
   static final _nickRegex = RegExp(r'^[A-Za-z0-9_]{3,20}$');
 
@@ -37,12 +46,53 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _nickMsg;
 
   @override
+  void initState() {
+    super.initState();
+    _bootstrapReferralCode();
+  }
+
+  @override
+  void didUpdateWidget(covariant LoginScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final incoming = widget.initialReferralCode;
+    if (incoming != null &&
+        incoming.isNotEmpty &&
+        incoming != oldWidget.initialReferralCode) {
+      _referralCtrl.text = normalizeReferralCode(incoming);
+    }
+  }
+
+  @override
   void dispose() {
     _nameCtrl.dispose();
     _nickCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
+    _referralCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _bootstrapReferralCode() async {
+    final fromArg = widget.initialReferralCode;
+    if (fromArg != null && fromArg.isNotEmpty) {
+      _referralCtrl.text = normalizeReferralCode(fromArg);
+      return;
+    }
+    final cached = await readPendingReferralCode();
+    if (cached != null && cached.isNotEmpty && mounted) {
+      setState(() {
+        _referralCtrl.text = cached;
+      });
+    }
+  }
+
+  Future<void> _pasteReferralCode() async {
+    final clip = await Clipboard.getData('text/plain');
+    final text = clip?.text?.trim() ?? '';
+    if (text.isEmpty) return;
+    setState(() {
+      _referralCtrl.text = normalizeReferralCode(text);
+    });
   }
 
   Future<void> _onNickChanged(String v) async {
@@ -53,8 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     if (nick.isEmpty) return;
     if (!_nickRegex.hasMatch(nick)) {
-      setState(() => _nickMsg =
-          'Use 3 a 20 caracteres: letras (sem acento), números e _');
+      setState(() =>
+          _nickMsg = 'Use 3 a 20 caracteres: letras (sem acento), números e _');
       return;
     }
     final seq = ++_nickSeq;
@@ -85,7 +135,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _nickCtrl.text.trim(),
           _emailCtrl.text.trim(),
           _passwordCtrl.text,
+          _referralCtrl.text,
         );
+        await clearPendingReferralCode();
       } else {
         await widget.api.login(_emailCtrl.text.trim(), _passwordCtrl.text);
       }
@@ -111,6 +163,22 @@ class _LoginScreenState extends State<LoginScreen> {
       _isRegister = register;
       _error = null;
     });
+  }
+
+  Future<void> _forgotPassword() async {
+    final typed = _emailCtrl.text.trim();
+    final ok = await Navigator.of(context).push<bool>(appRoute(
+      ForgotPasswordScreen(
+        api: widget.api,
+        // pré-preenche se o campo de login já tiver um e-mail
+        initialEmail: typed.contains('@') ? typed : null,
+      ),
+    ));
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Senha redefinida! Entre com a nova senha.'),
+      ));
+    }
   }
 
   @override
@@ -197,6 +265,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                             ),
                             const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _referralCtrl,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: InputDecoration(
+                                labelText: 'Código de indicação (opcional)',
+                                suffixIcon: IconButton(
+                                  tooltip: 'Colar código',
+                                  icon: const Icon(LucideIcons.clipboard),
+                                  onPressed: _pasteReferralCode,
+                                ),
+                              ),
+                              validator: (v) {
+                                final code = normalizeReferralCode(v ?? '');
+                                if (code.isEmpty) return null;
+                                if (code.length < 6 || code.length > 16) {
+                                  return 'Código inválido';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
                           ],
                           TextFormField(
                             controller: _emailCtrl,
@@ -204,12 +293,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? TextInputType.emailAddress
                                 : TextInputType.text,
                             decoration: InputDecoration(
-                                labelText:
-                                    _isRegister ? 'E-mail' : 'E-mail ou apelido'),
+                                labelText: _isRegister
+                                    ? 'E-mail'
+                                    : 'E-mail ou apelido'),
                             validator: (v) {
                               final s = v?.trim() ?? '';
                               if (_isRegister) {
-                                return s.contains('@') ? null : 'E-mail inválido';
+                                return s.contains('@')
+                                    ? null
+                                    : 'E-mail inválido';
                               }
                               return s.isEmpty
                                   ? 'Informe e-mail ou apelido'
@@ -242,6 +334,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             loading: _loading,
                             onPressed: _loading ? null : _submit,
                           ),
+                          if (!_isRegister)
+                            TextButton(
+                              onPressed: _loading ? null : _forgotPassword,
+                              child: const Text('Esqueci minha senha'),
+                            ),
                         ],
                       ),
                     ),
@@ -263,8 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
       padding: EdgeInsets.fromLTRB(24, topPad + 40, 24, 36),
       decoration: BoxDecoration(
         color: zon.brand,
-        borderRadius: const BorderRadius.vertical(
-            bottom: Radius.circular(32)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Column(
         children: [

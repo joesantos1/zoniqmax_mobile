@@ -84,7 +84,9 @@ class ApiClient {
     String nickname,
     String email,
     String password,
+    String? referralCode,
   ) async {
+    final normalizedCode = referralCode?.trim().toUpperCase();
     final res = await _client.post(
       _uri('/auth/register'),
       headers: _headers(),
@@ -93,6 +95,8 @@ class ApiClient {
         'nickname': nickname,
         'email': email,
         'password': password,
+        if (normalizedCode != null && normalizedCode.isNotEmpty)
+          'refCode': normalizedCode,
       }),
     );
     final result = AuthResult.fromJson(_decode(res) as Map<String, dynamic>);
@@ -134,7 +138,8 @@ class ApiClient {
   }
 
   Future<TerritoryDetail> getTerritory(String id) async {
-    final res = await _client.get(_uri('/territories/$id'), headers: _headers());
+    final res =
+        await _client.get(_uri('/territories/$id'), headers: _headers());
     return TerritoryDetail.fromJson(_decode(res) as Map<String, dynamic>);
   }
 
@@ -154,7 +159,8 @@ class ApiClient {
       '&minLat=$minLat&minLng=$minLng&maxLat=$maxLat&maxLng=$maxLng',
     );
     if (since != null) q.write('&since=${Uri.encodeQueryComponent(since)}');
-    final res = await _client.get(_uri(q.toString()), headers: _headers(auth: true));
+    final res =
+        await _client.get(_uri(q.toString()), headers: _headers(auth: true));
     final data = _decode(res) as List<dynamic>;
     return data
         .map((e) => MapTerritory.fromJson(e as Map<String, dynamic>))
@@ -163,8 +169,8 @@ class ApiClient {
 
   /// Zonas do jogador (governa ou tem influência) — sempre visíveis no mapa.
   Future<List<MapTerritory>> myZones() async {
-    final res =
-        await _client.get(_uri('/territories/mine'), headers: _headers(auth: true));
+    final res = await _client.get(_uri('/territories/mine'),
+        headers: _headers(auth: true));
     final data = _decode(res) as List<dynamic>;
     return data
         .map((e) => MapTerritory.fromJson(e as Map<String, dynamic>))
@@ -208,8 +214,57 @@ class ApiClient {
       _uri('/bonuses/outgoing'),
       headers: _headers(auth: true),
     );
-    return OutgoingBonusSummary.fromJson(
-        _decode(res) as Map<String, dynamic>);
+    return OutgoingBonusSummary.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  // ---- E-mail: verificação e recuperação de senha (códigos 2FA) ----
+
+  /// (Re)envia o código de verificação para o e-mail do usuário logado.
+  Future<void> requestEmailVerification() async {
+    final res = await _client.post(
+      _uri('/auth/email/verify/request'),
+      headers: _headers(auth: true),
+    );
+    _decode(res);
+  }
+
+  /// Confirma o código recebido e marca o e-mail como verificado.
+  Future<void> confirmEmailVerification(String code) async {
+    final res = await _client.post(
+      _uri('/auth/email/verify/confirm'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'code': code}),
+    );
+    _decode(res);
+  }
+
+  /// Pede o código de redefinição de senha (sempre responde OK — não revela
+  /// se o e-mail existe).
+  Future<void> forgotPassword(String email) async {
+    final res = await _client.post(
+      _uri('/auth/password/forgot'),
+      headers: _headers(),
+      body: jsonEncode({'email': email}),
+    );
+    _decode(res);
+  }
+
+  /// Redefine a senha com o código recebido por e-mail.
+  Future<void> resetPassword(
+    String email,
+    String code,
+    String newPassword,
+  ) async {
+    final res = await _client.post(
+      _uri('/auth/password/reset'),
+      headers: _headers(),
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'newPassword': newPassword,
+      }),
+    );
+    _decode(res);
   }
 
   // ---- Desafios ----
@@ -282,7 +337,8 @@ class ApiClient {
 
   // ---- Duelos ----
 
-  Future<Duel> createDuel({String? area, String? territoryId, String? challengeId}) async {
+  Future<Duel> createDuel(
+      {String? area, String? territoryId, String? challengeId}) async {
     final res = await _client.post(
       _uri('/duels'),
       headers: _headers(auth: true),
@@ -303,7 +359,8 @@ class ApiClient {
     final res = await _client.post(
       _uri('/duels/$duelId/attempt'),
       headers: _headers(auth: true),
-      body: jsonEncode({'answer': answer, 'timeSpentSeconds': timeSpentSeconds}),
+      body:
+          jsonEncode({'answer': answer, 'timeSpentSeconds': timeSpentSeconds}),
     );
     return DuelAttemptResult.fromJson(_decode(res) as Map<String, dynamic>);
   }
@@ -315,6 +372,61 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     return Challenge.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  // ---- Duelos de quebra de recordes ----
+
+  /// Cria um duelo de recordes contra um jogador do mesmo território.
+  Future<RecordDuel> createRecordDuel(
+    String defenderUserId,
+    String territoryId,
+  ) async {
+    final res = await _client.post(
+      _uri('/duels/records'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'defenderUserId': defenderUserId,
+        'territoryId': territoryId,
+      }),
+    );
+    return RecordDuel.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  /// Estado de um duelo de recordes.
+  Future<RecordDuel> getRecordDuel(String duelId) async {
+    final res = await _client.get(
+      _uri('/duels/records/$duelId'),
+      headers: _headers(auth: true),
+    );
+    return RecordDuel.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  /// Joga uma rodada do duelo de recordes.
+  Future<RecordRoundResult> submitRecordRound(
+    String duelId,
+    int order, {
+    required Object answer,
+    required int timeSpentSeconds,
+  }) async {
+    final res = await _client.post(
+      _uri('/duels/records/$duelId/rounds/$order'),
+      headers: _headers(auth: true),
+      body:
+          jsonEncode({'answer': answer, 'timeSpentSeconds': timeSpentSeconds}),
+    );
+    return RecordRoundResult.fromJson(_decode(res) as Map<String, dynamic>);
+  }
+
+  /// Últimos duelos de recordes do jogador (desafiante ou defensor).
+  Future<List<RecordDuel>> myRecordDuels() async {
+    final res = await _client.get(
+      _uri('/duels/records/mine'),
+      headers: _headers(auth: true),
+    );
+    final data = _decode(res) as List<dynamic>;
+    return data
+        .map((e) => RecordDuel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   // ---- Perfil ----
@@ -367,6 +479,16 @@ class ApiClient {
     _decode(res);
   }
 
+  Future<void> applyReferralCode(String referralCode) async {
+    final normalized = referralCode.trim().toUpperCase();
+    final res = await _client.patch(
+      _uri('/me/referral/apply'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'referralCode': normalized}),
+    );
+    _decode(res);
+  }
+
   Future<void> changePassword(String current, String newPassword) async {
     final res = await _client.patch(
       _uri('/me/password'),
@@ -395,7 +517,8 @@ class ApiClient {
       ..fields['timestamp'] = sign['timestamp'].toString()
       ..fields['folder'] = sign['folder'].toString()
       ..fields['signature'] = sign['signature'].toString()
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      ..files
+          .add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
 
     final streamed = await req.send();
     final body = await streamed.stream.bytesToString();

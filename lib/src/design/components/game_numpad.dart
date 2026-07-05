@@ -15,6 +15,7 @@ class GameNumpad extends StatelessWidget {
     this.enabled = true,
     this.allowDecimal = true,
     this.allowNegative = true,
+    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -22,8 +23,12 @@ class GameNumpad extends StatelessWidget {
   final bool allowDecimal;
   final bool allowNegative;
 
+  /// Limite de caracteres (ex.: 6 para códigos de verificação).
+  final int? maxLength;
+
   void _append(String ch) {
     final t = controller.text;
+    if (maxLength != null && t.length >= maxLength!) return;
     if (ch == ',' && (t.isEmpty || t.contains(','))) return;
     controller.text = t + ch;
   }
