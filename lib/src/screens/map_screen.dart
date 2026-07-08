@@ -545,7 +545,7 @@ class _MapScreenState extends State<MapScreen> {
                               color: AppColors.blue,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                  color: AppColors.white, width: 3),
+                                  color: AppColors.white, width: 1),
                               boxShadow: const [Shadows.soft],
                             ),
                           ),
@@ -797,7 +797,7 @@ class _ZoneMarker extends StatelessWidget {
       decoration: BoxDecoration(
         color: zon.surface,
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 3),
+        border: Border.all(color: color, width: 1),
         boxShadow: const [Shadows.soft],
       ),
       child: Icon(

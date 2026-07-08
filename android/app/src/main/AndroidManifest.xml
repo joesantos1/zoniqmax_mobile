@@ -6,10 +6,13 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <application
-        android:label="zoniqmax"
+        android:label="ZonIQmax"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:icon="@mipmap/ic_launcher">
+        <!-- HTTP em texto claro é permitido apenas no build de DEBUG (ver
+             src/debug/AndroidManifest.xml), para testar contra a API local.
+             O app publicado (release) só fala HTTPS. -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

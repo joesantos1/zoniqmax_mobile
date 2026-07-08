@@ -42,6 +42,19 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
     'RECRUTADOR': 'Recrutador',
   };
 
+  static const _areaLabels = {
+    'MATEMATICA': 'Matemática',
+    'LOGICA': 'Lógica',
+    'MEMORIA': 'Memória',
+    'BIOLOGIA': 'Biologia',
+    'HISTORIA': 'História',
+    'PORTUGUES': 'Português',
+    'GEOGRAFIA': 'Geografia',
+    'CIENCIAS': 'Ciências',
+    'ESTRATEGIA': 'Estratégia',
+    'OBSERVACAO': 'Observação',
+  };
+
   static const _typeLabels = {
     'SEQUENCIA_LOGICA': 'Sequência lógica',
     'MEMORIA_VISUAL': 'Memória',
@@ -112,6 +125,8 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
             );
           }
           final p = snapshot.data!;
+          final maxXp =
+              p.knowledgeXp.fold<double>(1, (m, e) => e.xp > m ? e.xp : m);
 
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -202,6 +217,23 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       )
                     else
                       ...p.territories.map(_territoryRow),
+                    const SizedBox(height: 24),
+                    // XP por área
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: SectionHeader(
+                          icon: LucideIcons.zap,
+                          title: 'XP por área',
+                          color: zon.xp),
+                    ),
+                    if (p.knowledgeXp.isEmpty)
+                      GamePanel(
+                        child: Text('Ainda não ganhou XP em nenhuma área.',
+                            style: AppText.body
+                                .copyWith(color: zon.onSurfaceMuted)),
+                      )
+                    else
+                      ...p.knowledgeXp.map((xp) => _xpRow(xp, maxXp)),
                     const SizedBox(height: 24),
                     // últimos desafios
                     Padding(
@@ -310,6 +342,57 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
               ),
             Text('${t.effectiveInfluence.toStringAsFixed(0)} inf.',
                 style: AppText.numeric.copyWith(fontSize: 15)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Linha de XP por área: ícone da área + barra de progresso + contador.
+  Widget _xpRow(KnowledgeXp xp, double maxXp) {
+    final accent = areaColor(xp.area);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GamePanel(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(areaIcon(xp.area), size: 16, color: accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_areaLabels[xp.area] ?? xp.area,
+                          style: AppText.bodyStrong),
+                      XpCounter(
+                        value: xp.xp.round(),
+                        suffix: ' XP',
+                        style: AppText.numeric
+                            .copyWith(fontSize: 15, color: accent),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  GameProgressBar(
+                    value: (xp.xp / maxXp).clamp(0.0, 1.0),
+                    color: accent,
+                    height: 10,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

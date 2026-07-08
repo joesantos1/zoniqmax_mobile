@@ -409,6 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               expanded: true,
               onPressed: _logout,
             ),
+            const Padding(padding: EdgeInsets.only(bottom: 44)),
           ],
         ),
       ),

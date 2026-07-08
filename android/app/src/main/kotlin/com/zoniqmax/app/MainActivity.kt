@@ -1,4 +1,4 @@
-package com.example.zoniqmax
+package com.zoniqmax.app
 
 import io.flutter.embedding.android.FlutterActivity
 
