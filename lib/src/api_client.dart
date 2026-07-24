@@ -33,6 +33,9 @@ class ApiClient {
   /// Id do jogador autenticado (disponível após login/registro ou loadToken).
   String? get currentUserId => _userId;
 
+  /// Se há um token carregado (jogador autenticado).
+  bool get isLoggedIn => _token != null;
+
   Future<String?> loadToken() async {
     _token ??= await _storage.read(key: _tokenKey);
     _userId ??= await _storage.read(key: _userIdKey);
@@ -160,7 +163,7 @@ class ApiClient {
     );
     if (since != null) q.write('&since=${Uri.encodeQueryComponent(since)}');
     final res =
-        await _client.get(_uri(q.toString()), headers: _headers(auth: true));
+        await _client.get(_uri(q.toString()), headers: _headers());
     final data = _decode(res) as List<dynamic>;
     return data
         .map((e) => MapTerritory.fromJson(e as Map<String, dynamic>))
@@ -168,7 +171,9 @@ class ApiClient {
   }
 
   /// Zonas do jogador (governa ou tem influência) — sempre visíveis no mapa.
+  /// Retorna lista vazia se o jogador não estiver autenticado.
   Future<List<MapTerritory>> myZones() async {
+    if (_token == null) return [];
     final res = await _client.get(_uri('/territories/mine'),
         headers: _headers(auth: true));
     final data = _decode(res) as List<dynamic>;
@@ -438,7 +443,7 @@ class ApiClient {
 
   /// Perfil público de outro jogador.
   /// Histórico público de um jogador (desafios + bônus enviados); opcionalmente
-  /// filtrado por território.
+  /// filtrado por território. Não requer autenticação.
   Future<List<ActivityItem>> playerHistory(
     String userId, {
     String? territoryId,
@@ -451,7 +456,7 @@ class ApiClient {
     final q = '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
     final res = await _client.get(
       _uri('/users/$userId/history$q'),
-      headers: _headers(auth: true),
+      headers: _headers(),
     );
     final data = _decode(res) as List<dynamic>;
     return data
@@ -462,7 +467,7 @@ class ApiClient {
   Future<PublicProfile> getPlayer(String userId) async {
     final res = await _client.get(
       _uri('/users/$userId'),
-      headers: _headers(auth: true),
+      headers: _headers(),
     );
     return PublicProfile.fromJson(_decode(res) as Map<String, dynamic>);
   }

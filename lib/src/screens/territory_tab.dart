@@ -19,8 +19,10 @@ class TerritoryTab extends StatefulWidget {
     required this.api,
     required this.territoryId,
     this.isPresent = false,
+    this.isLoggedIn = false,
     this.userLat,
     this.userLng,
+    this.onRequireLogin,
     this.onChanged,
     this.onBackToCurrent,
   });
@@ -30,8 +32,16 @@ class TerritoryTab extends StatefulWidget {
 
   /// O jogador está fisicamente neste território? Só então pode realizar desafios.
   final bool isPresent;
+
+  /// Se o jogador está autenticado. Quando false, ações que exigem login
+  /// redirecionam ao fluxo de autenticação.
+  final bool isLoggedIn;
+
   final double? userLat;
   final double? userLng;
+
+  /// Chamado quando uma ação requer autenticação (redireciona ao login).
+  final VoidCallback? onRequireLogin;
 
   /// Chamado quando a zona é personalizada (para o mapa atualizar).
   final VoidCallback? onChanged;
@@ -83,6 +93,10 @@ class _TerritoryTabState extends State<TerritoryTab> {
   void _reload() => _load();
 
   void _startChallenge() {
+    if (!widget.isLoggedIn) {
+      widget.onRequireLogin?.call();
+      return;
+    }
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => ChallengeSetupScreen(
@@ -466,8 +480,8 @@ class _TerritoryTabState extends State<TerritoryTab> {
           const SizedBox(height: 20),
           if (widget.isPresent)
             GameButton(
-              label: 'INICIAR DESAFIOS',
-              icon: LucideIcons.brain,
+              label: widget.isLoggedIn ? 'INICIAR DESAFIOS' : 'FAÇA LOGIN PARA JOGAR',
+              icon: widget.isLoggedIn ? LucideIcons.brain : LucideIcons.logIn,
               size: GameButtonSize.lg,
               expanded: true,
               onPressed: _startChallenge,

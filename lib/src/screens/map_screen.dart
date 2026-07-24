@@ -18,16 +18,25 @@ import 'hex_background_layer.dart';
 /// Aba Mapa: mapa 2D (CartoDB) com a localização real do jogador. Carrega as zonas
 /// por região visível (viewport) + as zonas do jogador, com cache por célula,
 /// refresh incremental (delta `since`) e snapshot para abrir instantâneo.
+/// Suporta modo visitante (guest): mapa e territórios são públicos.
 class MapScreen extends StatefulWidget {
   const MapScreen({
     super.key,
     required this.api,
+    this.isLoggedIn = false,
+    this.onRequireLogin,
     this.onCurrentZone,
     this.onOpenTerritory,
     this.refreshSignal = 0,
   });
 
   final ApiClient api;
+
+  /// Se o jogador está autenticado. Quando false, oculta ações que exigem login.
+  final bool isLoggedIn;
+
+  /// Chamado quando uma ação requer autenticação (redireciona ao login).
+  final VoidCallback? onRequireLogin;
 
   /// Chamado quando a zona atual do jogador é determinada (com a localização real).
   final void Function(MapTerritory zone, LatLng location)? onCurrentZone;
@@ -150,7 +159,7 @@ class _MapScreenState extends State<MapScreen> {
       final location = await _determinePosition();
       _initialCenter = location;
       await _fetchViewport(location, _boundsAround(location), full: true);
-      await _fetchMine();
+      if (widget.isLoggedIn) await _fetchMine();
       if (mounted) setState(() => _loading = false);
       _centerOn(location, 13);
       _persist();
@@ -197,7 +206,7 @@ class _MapScreenState extends State<MapScreen> {
       final loc = await _determinePosition();
       _initialCenter = loc;
       await _fetchViewport(loc, _boundsAround(loc), full: true);
-      await _fetchMine();
+      if (widget.isLoggedIn) await _fetchMine();
       _centerOn(loc, 15);
       _persist();
     } catch (e) {
@@ -403,6 +412,10 @@ class _MapScreenState extends State<MapScreen> {
   void _openTerritory(MapTerritory t) => widget.onOpenTerritory?.call(t);
 
   void _startChallenge(MapTerritory t) {
+    if (!widget.isLoggedIn) {
+      widget.onRequireLogin?.call();
+      return;
+    }
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => ChallengeSetupScreen(
@@ -750,10 +763,14 @@ class _MapScreenState extends State<MapScreen> {
                     children: [
                       Expanded(
                         child: GameButton(
-                          label: iAmGovernor ? 'DEFENDER' : 'INICIAR DESAFIOS',
-                          icon: iAmGovernor
-                              ? LucideIcons.shield
-                              : LucideIcons.play,
+                          label: widget.isLoggedIn
+                              ? (iAmGovernor ? 'DEFENDER' : 'INICIAR DESAFIOS')
+                              : 'FAÇA LOGIN PARA JOGAR',
+                          icon: widget.isLoggedIn
+                              ? (iAmGovernor
+                                  ? LucideIcons.shield
+                                  : LucideIcons.play)
+                              : LucideIcons.logIn,
                           expanded: true,
                           onPressed: () => _startChallenge(zone),
                         ),

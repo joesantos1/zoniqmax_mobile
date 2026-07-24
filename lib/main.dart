@@ -7,7 +7,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'src/api_client.dart';
 import 'src/referral_links.dart';
 import 'src/theme.dart';
-import 'src/screens/login_screen.dart';
 import 'src/screens/home_shell.dart';
 
 void main() {
@@ -23,7 +22,6 @@ class ZonIQmaxApp extends StatefulWidget {
 
 class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
   final ApiClient _api = ApiClient();
-  late final Future<String?> _tokenFuture = _api.loadToken();
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _referralSub;
   String? _pendingReferralCode;
@@ -33,6 +31,7 @@ class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
     super.initState();
     _bootstrapReferralCode();
     _listenDeepLinks();
+    _api.loadToken(); // dispara o load — HomeShell escuta isLoggedIn
   }
 
   @override
@@ -73,20 +72,9 @@ class _ZonIQmaxAppState extends State<ZonIQmaxApp> {
       title: 'ZonIQmax',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: FutureBuilder<String?>(
-        future: _tokenFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const _BootScreen();
-          }
-          final hasToken = snapshot.data != null;
-          return hasToken
-              ? HomeShell(api: _api)
-              : LoginScreen(
-                  api: _api,
-                  initialReferralCode: _pendingReferralCode,
-                );
-        },
+      home: HomeShell(
+        api: _api,
+        initialReferralCode: _pendingReferralCode,
       ),
     );
   }

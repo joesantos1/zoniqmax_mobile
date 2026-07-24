@@ -125,14 +125,17 @@ class _TerritoryDetailScreenState extends State<TerritoryDetailScreen> {
                       icon: LucideIcons.brain,
                       label: 'DESAFIO',
                       color: zon.info,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ChallengeScreen(
-                            api: widget.api,
-                            territoryId: widget.territory.id,
-                          ),
-                        ),
-                      ).then((_) => _reload()),
+                      enabled: widget.api.isLoggedIn,
+                      onTap: widget.api.isLoggedIn
+                          ? () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ChallengeScreen(
+                                    api: widget.api,
+                                    territoryId: widget.territory.id,
+                                  ),
+                                ),
+                              ).then((_) => _reload())
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -141,15 +144,18 @@ class _TerritoryDetailScreenState extends State<TerritoryDetailScreen> {
                       icon: LucideIcons.swords,
                       label: 'DUELO',
                       color: zon.danger,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => DuelModeScreen(
-                            api: widget.api,
-                            territoryId: widget.territory.id,
-                            territoryName: widget.territory.name,
-                          ),
-                        ),
-                      ).then((_) => _reload()),
+                      enabled: widget.api.isLoggedIn,
+                      onTap: widget.api.isLoggedIn
+                          ? () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => DuelModeScreen(
+                                    api: widget.api,
+                                    territoryId: widget.territory.id,
+                                    territoryName: widget.territory.name,
+                                  ),
+                                ),
+                              ).then((_) => _reload())
+                          : null,
                     ),
                   ),
                 ],
@@ -203,30 +209,38 @@ class _ActivityButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
+    this.enabled = true,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
   final Color color;
-  final VoidCallback onTap;
+  final bool enabled;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final zon = context.zon;
+    final effColor = enabled ? color : zon.onSurfaceMuted;
     return GamePressable(
       onTap: onTap,
-      faceColor: color,
-      borderColor: color,
-      edgeColor: Color.lerp(color, Colors.black, 0.25)!,
+      faceColor: effColor,
+      borderColor: effColor,
+      edgeColor: Color.lerp(effColor, Colors.black, 0.25)!,
       radius: Corners.lg,
       padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Column(
-        children: [
-          Icon(icon, color: zon.onBrand, size: 32),
-          const SizedBox(height: 6),
-          Text(label, style: AppText.button.copyWith(color: zon.onBrand)),
-        ],
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.5,
+        child: Column(
+          children: [
+            Icon(icon, color: enabled ? zon.onBrand : zon.onSurface, size: 32),
+            const SizedBox(height: 6),
+            Text(label,
+                style: AppText.button.copyWith(
+                    color: enabled ? zon.onBrand : zon.onSurfaceMuted)),
+          ],
+        ),
       ),
     );
   }

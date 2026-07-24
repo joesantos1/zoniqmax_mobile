@@ -8,7 +8,6 @@ import '../api_client.dart';
 import '../referral_links.dart';
 import '../theme.dart';
 import 'forgot_password_screen.dart';
-import 'home_shell.dart';
 
 /// Tela de login / cadastro: hero laranja da marca no topo + formulário em
 /// cartão, com toggle segmentado entre entrar/criar conta.
@@ -142,11 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await widget.api.login(_emailCtrl.text.trim(), _passwordCtrl.text);
       }
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeShell(api: widget.api),
-        ),
-      );
+      Navigator.of(context).pop(true); // sucesso → HomeShell atualiza auth
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
